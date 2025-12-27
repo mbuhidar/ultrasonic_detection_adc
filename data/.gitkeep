@@ -1,0 +1,40 @@
+# Data Directory
+
+This directory contains collected sensor data files.
+
+Files are automatically created with timestamps in the format:
+- `sensor_data_YYYYMMDD_HHMMSS.csv`
+- `sensor_data_YYYYMMDD_HHMMSS.json`
+
+## File Format
+
+### CSV Format
+```csv
+system_timestamp,arduino_timestamp_ms,sensor_1_adc,sensor_1_distance_cm,sensor_2_adc,sensor_2_distance_cm
+2024-12-26T10:30:45.123456,1234,150,190.5,200,254.0
+```
+
+### JSON Format
+```json
+[
+  {
+    "system_timestamp": "2024-12-26T10:30:45.123456",
+    "arduino_timestamp_ms": 1234,
+    "sensor_values": [150, 200],
+    "sensor_distances_cm": [190.5, 254.0]
+  }
+]
+```
+
+## Data Retention
+
+- Files are never automatically deleted
+- Organize old files into subdirectories as needed
+- Consider archiving or compressing old data files
+
+## Disk Space
+
+Approximate disk usage:
+- CSV: ~100 bytes per record
+- JSON: ~150 bytes per record
+- At 10 samples/sec: ~3.6 MB/hour (CSV), ~5.4 MB/hour (JSON)

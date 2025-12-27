@@ -1,0 +1,30 @@
+# Ultrasonic Detection Configuration
+
+# Sensor Configuration
+sensors:
+  count: 2
+  model: "MB1300"
+  samples_per_trigger: 10
+  sampling_interval_ms: 100  # Time between sample cycles (sensors fire sequentially)
+  chaining_mode: true        # AN Output Constantly Looping with sensor chaining
+
+# Arduino Configuration
+arduino:
+  port: "/dev/ttyACM0"  # Update based on your system
+  baudrate: 115200
+  timeout: 2
+
+# Data Storage Configuration
+data:
+  output_directory: "./data"
+  file_format: "csv"  # csv or json
+  include_timestamp: true
+  buffer_size: 100  # Number of readings to buffer before writing
+
+# Sensor Pin Mapping (Arduino Analog Pins)
+pins:
+  sensor_1: A0
+  sensor_2: A1
+  # Add more sensors as needed
+  # sensor_3: A2
+  # sensor_4: A3
