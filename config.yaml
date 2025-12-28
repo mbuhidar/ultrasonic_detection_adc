@@ -5,7 +5,7 @@ sensors:
   count: 2
   model: "MB1300"
   samples_per_trigger: 10
-  readings_per_trigger: 10   # Number of ADC readings to collect per trigger
+  readings_per_trigger: 240  # 240 samples at 50us intervals = 2m range at ~1cm resolution
   sampling_interval_ms: 100  # Time between sample cycles (sensors fire sequentially)
   chaining_mode: true        # AN Output Constantly Looping with sensor chaining
 
