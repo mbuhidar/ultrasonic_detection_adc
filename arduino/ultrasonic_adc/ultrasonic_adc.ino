@@ -30,9 +30,10 @@
 const int NUM_SENSORS = 2;
 const int SENSOR_PINS[] = {A0, A1};  // Analog pins for sensor AN outputs
 const int TRIGGER_PIN = 2;           // Digital pin to trigger first sensor's RX
-const int READINGS_PER_TRIGGER = 10; // Number of ADC readings to collect per trigger
+const int READINGS_PER_TRIGGER = 10; // Number of peak values to capture
 const unsigned long SAMPLING_INTERVAL = 100; // ms between sample cycles (sensors fire sequentially)
-const unsigned long READING_DELAY_US = 100; // Delay between individual ADC readings in microseconds
+const int SAMPLES_PER_PEAK = 50;     // Number of ADC samples to check for each peak
+const unsigned long PEAK_WINDOW_US = 5000; // Microseconds to sample for each peak (5ms)
 
 // State variables
 bool isCollecting = false;
@@ -147,25 +148,45 @@ void processCommand() {
 }
 
 void collectSample(unsigned long timestamp) {
-  // Collect multiple readings for each sensor
-  int readings[NUM_SENSORS][READINGS_PER_TRIGGER];
+  // Collect peak values for each sensor across multiple return pulses
+  int peakReadings[NUM_SENSORS][READINGS_PER_TRIGGER];
   
+  // For each expected return pulse
   for (int reading = 0; reading < READINGS_PER_TRIGGER; reading++) {
+    unsigned long windowStart = micros();
+    unsigned long sampleDelay = PEAK_WINDOW_US / SAMPLES_PER_PEAK;
+    
+    // Initialize peak values to 0
     for (int sensor = 0; sensor < NUM_SENSORS; sensor++) {
-      readings[sensor][reading] = analogRead(SENSOR_PINS[sensor]);
+      peakReadings[sensor][reading] = 0;
     }
-    if (reading < READINGS_PER_TRIGGER - 1) {
-      delayMicroseconds(READING_DELAY_US);
+    
+    // Sample rapidly during this pulse window to find peak
+    for (int sample = 0; sample < SAMPLES_PER_PEAK; sample++) {
+      for (int sensor = 0; sensor < NUM_SENSORS; sensor++) {
+        int value = analogRead(SENSOR_PINS[sensor]);
+        if (value > peakReadings[sensor][reading]) {
+          peakReadings[sensor][reading] = value;
+        }
+      }
+      
+      // Wait until next sample time
+      while (micros() - windowStart < (sample + 1) * sampleDelay) {
+        // Busy wait for precise timing
+      }
     }
+    
+    // Small delay before next pulse window
+    delayMicroseconds(1000);
   }
   
-  // Send data in CSV format: S,timestamp,sensor1_r1,sensor1_r2,...,sensor2_r1,sensor2_r2,...
+  // Send data in CSV format: S,timestamp,sensor1_peak1,sensor1_peak2,...,sensor2_peak1,sensor2_peak2,...
   Serial.print("S,");
   Serial.print(timestamp);
   for (int sensor = 0; sensor < NUM_SENSORS; sensor++) {
     for (int reading = 0; reading < READINGS_PER_TRIGGER; reading++) {
       Serial.print(",");
-      Serial.print(readings[sensor][reading]);
+      Serial.print(peakReadings[sensor][reading]);
     }
   }
   Serial.println();
