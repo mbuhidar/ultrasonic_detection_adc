@@ -143,14 +143,24 @@ class UltrasonicDataCollector:
                 return
             
             timestamp_ms = int(parts[1])
-            sensor_values = [int(v) for v in parts[2:]]
+            all_values = [int(v) for v in parts[2:]]
+            
+            # Parse readings: sensor1_r1, sensor1_r2, ..., sensor2_r1, sensor2_r2, ...
+            num_sensors = self.config['sensors']['count']
+            readings_per_trigger = self.config['sensors'].get('readings_per_trigger', 10)
+            
+            # Reshape data into per-sensor readings
+            sensor_readings = []
+            for i in range(num_sensors):
+                start_idx = i * readings_per_trigger
+                end_idx = start_idx + readings_per_trigger
+                sensor_readings.append(all_values[start_idx:end_idx])
             
             # Create data entry
             data_entry = {
                 'system_timestamp': datetime.now().isoformat(),
                 'arduino_timestamp_ms': timestamp_ms,
-                'sensor_values': sensor_values,
-                'sensor_distances_cm': [self._adc_to_distance(v) for v in sensor_values]
+                'sensor_readings': sensor_readings  # List of lists: [[s1_r1, s1_r2, ...], [s2_r1, s2_r2, ...]]
             }
             
             self.data_queue.put(data_entry)
@@ -199,12 +209,14 @@ class UltrasonicDataCollector:
             if not self.data_buffer:
                 return
             
-            # Determine number of sensors from first entry
-            num_sensors = len(self.data_buffer[0]['sensor_values'])
+            # Determine number of sensors and readings from first entry
+            num_sensors = len(self.data_buffer[0]['sensor_readings'])
+            readings_per_trigger = len(self.data_buffer[0]['sensor_readings'][0])
             
             fieldnames = ['system_timestamp', 'arduino_timestamp_ms']
             for i in range(num_sensors):
-                fieldnames.extend([f'sensor_{i+1}_adc', f'sensor_{i+1}_distance_cm'])
+                for j in range(readings_per_trigger):
+                    fieldnames.append(f'sensor_{i+1}_reading_{j+1}')
             
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             
@@ -216,10 +228,9 @@ class UltrasonicDataCollector:
                     'system_timestamp': entry['system_timestamp'],
                     'arduino_timestamp_ms': entry['arduino_timestamp_ms']
                 }
-                for i, (adc, dist) in enumerate(zip(entry['sensor_values'], 
-                                                      entry['sensor_distances_cm'])):
-                    row[f'sensor_{i+1}_adc'] = adc
-                    row[f'sensor_{i+1}_distance_cm'] = round(dist, 2)
+                for i, sensor_data in enumerate(entry['sensor_readings']):
+                    for j, reading in enumerate(sensor_data):
+                        row[f'sensor_{i+1}_reading_{j+1}'] = reading
                 
                 writer.writerow(row)
     

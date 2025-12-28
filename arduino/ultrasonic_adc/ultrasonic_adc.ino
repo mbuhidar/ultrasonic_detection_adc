@@ -30,7 +30,9 @@
 const int NUM_SENSORS = 2;
 const int SENSOR_PINS[] = {A0, A1};  // Analog pins for sensor AN outputs
 const int TRIGGER_PIN = 2;           // Digital pin to trigger first sensor's RX
+const int READINGS_PER_TRIGGER = 10; // Number of ADC readings to collect per trigger
 const unsigned long SAMPLING_INTERVAL = 100; // ms between sample cycles (sensors fire sequentially)
+const unsigned long READING_DELAY_US = 100; // Delay between individual ADC readings in microseconds
 
 // State variables
 bool isCollecting = false;
@@ -145,18 +147,26 @@ void processCommand() {
 }
 
 void collectSample(unsigned long timestamp) {
-  // Read all sensors
-  int values[NUM_SENSORS];
-  for (int i = 0; i < NUM_SENSORS; i++) {
-    values[i] = analogRead(SENSOR_PINS[i]);
+  // Collect multiple readings for each sensor
+  int readings[NUM_SENSORS][READINGS_PER_TRIGGER];
+  
+  for (int reading = 0; reading < READINGS_PER_TRIGGER; reading++) {
+    for (int sensor = 0; sensor < NUM_SENSORS; sensor++) {
+      readings[sensor][reading] = analogRead(SENSOR_PINS[sensor]);
+    }
+    if (reading < READINGS_PER_TRIGGER - 1) {
+      delayMicroseconds(READING_DELAY_US);
+    }
   }
   
-  // Send data in CSV format: S,timestamp,sensor1,sensor2,...
+  // Send data in CSV format: S,timestamp,sensor1_r1,sensor1_r2,...,sensor2_r1,sensor2_r2,...
   Serial.print("S,");
   Serial.print(timestamp);
-  for (int i = 0; i < NUM_SENSORS; i++) {
-    Serial.print(",");
-    Serial.print(values[i]);
+  for (int sensor = 0; sensor < NUM_SENSORS; sensor++) {
+    for (int reading = 0; reading < READINGS_PER_TRIGGER; reading++) {
+      Serial.print(",");
+      Serial.print(readings[sensor][reading]);
+    }
   }
   Serial.println();
 }
