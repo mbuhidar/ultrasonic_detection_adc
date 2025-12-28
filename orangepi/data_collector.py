@@ -202,37 +202,38 @@ class UltrasonicDataCollector:
         self.data_buffer = []
     
     def _write_csv(self, filepath: Path):
-        """Write data buffer to CSV file."""
+        """Write data buffer to CSV file with separate rows per sensor."""
         file_exists = filepath.exists()
         
         with open(filepath, 'a', newline='') as f:
             if not self.data_buffer:
                 return
             
-            # Determine number of sensors and readings from first entry
-            num_sensors = len(self.data_buffer[0]['sensor_readings'])
+            # Determine number of readings from first entry
             readings_per_trigger = len(self.data_buffer[0]['sensor_readings'][0])
             
-            fieldnames = ['system_timestamp', 'arduino_timestamp_ms']
-            for i in range(num_sensors):
-                for j in range(readings_per_trigger):
-                    fieldnames.append(f'sensor_{i+1}_reading_{j+1}')
+            # Build fieldnames: timestamp, sensor_id, reading_1, reading_2, ..., reading_N
+            fieldnames = ['system_timestamp', 'arduino_timestamp_ms', 'sensor_id']
+            for j in range(readings_per_trigger):
+                fieldnames.append(f'reading_{j+1}')
             
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             
             if not file_exists:
                 writer.writeheader()
             
+            # Write separate row for each sensor
             for entry in self.data_buffer:
-                row = {
-                    'system_timestamp': entry['system_timestamp'],
-                    'arduino_timestamp_ms': entry['arduino_timestamp_ms']
-                }
-                for i, sensor_data in enumerate(entry['sensor_readings']):
+                for sensor_idx, sensor_data in enumerate(entry['sensor_readings']):
+                    row = {
+                        'system_timestamp': entry['system_timestamp'],
+                        'arduino_timestamp_ms': entry['arduino_timestamp_ms'],
+                        'sensor_id': sensor_idx + 1
+                    }
                     for j, reading in enumerate(sensor_data):
-                        row[f'sensor_{i+1}_reading_{j+1}'] = reading
-                
-                writer.writerow(row)
+                        row[f'reading_{j+1}'] = reading
+                    
+                    writer.writerow(row)
     
     def _write_json(self, filepath: Path):
         """Write data buffer to JSON file."""
