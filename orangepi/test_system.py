@@ -121,13 +121,13 @@ def test_distance_calculation():
     print("\nTesting distance calculation...")
     
     test_cases = [
-        (100, 127.0),   # 100 ADC = ~127cm
-        (200, 254.0),   # 200 ADC = ~254cm
+        (100, 100.0),   # 100 ADC = ~100cm
+        (200, 200.0),   # 200 ADC = ~200cm
         (0, 0.0),       # 0 ADC = 0cm
     ]
     
     def adc_to_distance(adc):
-        return adc * 0.5 * 2.54
+        return adc  # At 5V: ADC value directly approximates cm (~4.9mV/cm)
     
     all_passed = True
     for adc, expected in test_cases:

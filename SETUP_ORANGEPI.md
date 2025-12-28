@@ -6,7 +6,8 @@ Follow these steps to set up the Orange Pi 5 for data collection and analysis.
 
 - Orange Pi 5 with Ubuntu/Debian-based OS
 - Internet connection
-- Arduino Uno already set up and connected via USB
+- Arduino Uno already set up with chained sensor configuration (see WIRING_CHAINED.md)
+- Arduino connected via USB
 - SSH access or direct terminal access
 
 ## Quick Start (One Command)
@@ -151,6 +152,13 @@ You should see:
 ✓ PASS     File System
 ```
 
+The Arduino should report:
+```
+READY
+NUM_SENSORS:2
+MODE:AN_CHAINED
+```
+
 If any tests fail, see the troubleshooting section below.
 
 ### Step 7: Collect Data
@@ -195,7 +203,8 @@ Edit `config.yaml` to customize:
 sensors:
   count: 2                    # Number of sensors
   samples_per_trigger: 10     # Samples per trigger event
-  sampling_interval_ms: 50    # Time between samples (ms)
+  sampling_interval_ms: 100   # Time between sample cycles (ms)
+  chaining_mode: true         # AN Output Constantly Looping with chaining
 
 # Arduino Configuration
 arduino:

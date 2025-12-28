@@ -8,44 +8,63 @@ Follow these steps to set up the Arduino Uno for the ultrasonic detection system
 - USB cable (Type A to Type B)
 - Arduino Uno board
 - 2x MB1300 ultrasonic sensors
+- 2x 1kΩ resistors (for sensor chaining)
+- Breadboard (recommended)
+- Jumper wires
 
 ## Hardware Setup
 
 ### Step 1: Connect MB1300 Sensors to Arduino
 
-**Sensor 1:**
+**This system uses AN Output Constantly Looping with chaining to prevent interference.**
+
+For detailed step-by-step wiring instructions, see [WIRING_CHAINED.md](WIRING_CHAINED.md).
+
+**Quick Reference - Sensor 1 (First in chain):**
 ```
-MB1300 Pin    →    Arduino Pin
-─────────────────────────────────
-VCC (Red)     →    5V
-GND (Black)   →    GND
-AN (White)    →    A0
-TX (Leave unconnected or tie to Arduino RX if needed later)
+MB1300 Pin    →    Arduino Pin / Connection
+────────────────────────────────────────────────
+Pin 7 (GND)   →    Arduino GND (Black)
+Pin 6 (+5V)   →    Arduino 5V (Red)
+Pin 3 (AN)    →    Arduino A0 (White)
+Pin 4 (RX)    →    Arduino D2 (Yellow) - trigger pin
+Pin 5 (TX)    →    [1kΩ resistor] → Sensor 2 Pin 4 (Blue)
+Pin 1 (BW)    →    Arduino GND (enables pulse mode)
+Pin 2 (PW)    →    Not connected
 ```
 
-**Sensor 2:**
+**Quick Reference - Sensor 2 (Second in chain):**
 ```
-MB1300 Pin    →    Arduino Pin
-─────────────────────────────────
-VCC (Red)     →    5V
-GND (Black)   →    GND
-AN (White)    →    A1
-TX (Leave unconnected)
+MB1300 Pin    →    Arduino Pin / Connection
+────────────────────────────────────────────────
+Pin 7 (GND)   →    Arduino GND (Black)
+Pin 6 (+5V)   →    Arduino 5V (Red)
+Pin 3 (AN)    →    Arduino A1 (White)
+Pin 4 (RX)    →    ← [1kΩ resistor] ← Sensor 1 Pin 5 (Yellow)
+Pin 5 (TX)    →    [1kΩ resistor] → Sensor 1 Pin 4 (Blue) - loop back
+Pin 1 (BW)    →    Arduino GND (enables pulse mode)
+Pin 2 (PW)    →    Not connected
 ```
 
-**Important Notes:**
-- MB1300 sensors can run on 3.3V-5.5V, but 5V is recommended for best range
+**Critical Notes:**
+- **Pin 1 (BW) MUST be connected to GND** on both sensors (enables pulse chaining)
+- **1kΩ resistors are required** between TX and RX connections
+- Sensor 1 Pin 4 receives TWO inputs: Arduino D2 and Sensor 2 TX (both via resistor)
+- MB1300 sensors run on 3.3V-5.5V, but 5V is recommended
 - Each sensor draws ~2mA typically, 50mA max
-- The AN pin outputs analog voltage proportional to distance
-- Keep sensor faces clear of obstructions
+- Keep sensor faces clear and at least 15cm apart
 
 ### Step 2: Verify Connections
 
 Before powering on, double-check:
-- ✓ All VCC pins connected to Arduino 5V
-- ✓ All GND pins connected to Arduino GND
-- ✓ Sensor 1 AN pin → A0
-- ✓ Sensor 2 AN pin → A1
+- ✓ All Pin 6 (+5V) connected to Arduino 5V
+- ✓ All Pin 7 (GND) connected to Arduino GND
+- ✓ Sensor 1 Pin 3 (AN) → Arduino A0
+- ✓ Sensor 2 Pin 3 (AN) → Arduino A1
+- ✓ Both Pin 1 (BW) → Arduino GND (CRITICAL!)
+- ✓ Sensor 1 Pin 4 (RX) → Arduino D2
+- ✓ Sensor 1 Pin 5 (TX) → [1kΩ] → Sensor 2 Pin 4 (RX)
+- ✓ Sensor 2 Pin 5 (TX) → [1kΩ] → Sensor 1 Pin 4 (RX)
 - ✓ No short circuits between pins
 
 ## Software Setup
@@ -111,12 +130,15 @@ brew install --cask arduino
    ```
    READY
    NUM_SENSORS:2
+   MODE:AN_CHAINED
    ```
 
 3. **Test the sensors:**
    - Type: `START:10` and press Enter
    - You should see data lines like: `S,1234,150,200`
-   - Wave your hand in front of sensors to see values change
+   - Wave your hand in front of Sensor 1 → first number changes
+   - Wave your hand in front of Sensor 2 → second number changes
+   - If both change together, check Pin 1 (BW) connections to GND
    - Type: `STOP` to stop data collection
 
 ## Troubleshooting
@@ -155,7 +177,24 @@ sudo usermod -a -G dialout $USER
 - Verify baud rate is 115200
 - Press Arduino reset button
 - Check sensor connections
-- Verify sensors have power (5V between VCC and GND)
+- Verify sensors have power (5V between Pin 6 and Pin 7)
+- Ensure Pin 1 (BW) connected to GND on both sensors
+- Check Arduino D2 connected to Sensor 1 Pin 4 (RX)
+
+### Sensors Not Firing in Sequence
+
+**Symptom:** Both sensor readings change at the same time.
+
+**Causes:**
+- Pin 1 (BW) not connected to GND (critical!)
+- Missing 1kΩ resistors in TX→RX connections
+- Incorrect TX→RX wiring
+
+**Check:**
+1. Verify Pin 1 on both sensors connected to Arduino GND
+2. Confirm 1kΩ resistors between TX and RX pins
+3. Verify: S1.TX → S2.RX and S2.TX → S1.RX (with resistors)
+4. Check Arduino D2 connected to Sensor 1 RX
 
 ## Testing Sensors Individually
 

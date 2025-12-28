@@ -5,19 +5,40 @@ Get up and running in minutes!
 ## Overview
 
 This system uses:
-- **2x MB1300 ultrasonic sensors** → detect objects
+- **2x MB1300 ultrasonic sensors** → detect objects (chained for sequential operation)
 - **Arduino Uno** → convert analog signals to digital
 - **Orange Pi 5** → collect and analyze data
 
-## Arduino Setup (5 minutes)
+## Arduino Setup (10 minutes)
 
-### 1. Wire Sensors to Arduino
+### 1. Wire Sensors to Arduino (Chained Configuration)
 
-| MB1300 Pin | Arduino Pin |
-|------------|-------------|
-| VCC (Red)  | 5V          |
-| GND (Black)| GND         |
-| AN (White) | A0 (sensor 1), A1 (sensor 2) |
+**Required Materials:**
+- 2x MB1300 sensors
+- 2x 1kΩ resistors (for TX→RX chaining)
+- Jumper wires
+
+**Sensor 1 (First in chain):**
+| MB1300 Pin | Arduino Pin | Wire Color |
+|------------|-------------|------------|
+| Pin 1 (BW) | GND         | Black      |
+| Pin 3 (AN) | A0          | White      |
+| Pin 4 (RX) | D2          | Yellow     |
+| Pin 5 (TX) | → 1kΩ → Sensor 2 RX | Blue |
+| Pin 6 (+5V)| 5V          | Red        |
+| Pin 7 (GND)| GND         | Black      |
+
+**Sensor 2 (Second in chain):**
+| MB1300 Pin | Arduino Pin | Wire Color |
+|------------|-------------|------------|
+| Pin 1 (BW) | GND         | Black      |
+| Pin 3 (AN) | A1          | White      |
+| Pin 4 (RX) | ← 1kΩ ← Sensor 1 TX | Yellow |
+| Pin 5 (TX) | → 1kΩ → Sensor 1 RX | Blue |
+| Pin 6 (+5V)| 5V          | Red        |
+| Pin 7 (GND)| GND         | Black      |
+
+**Important:** The 1kΩ resistors between TX and RX pins are required!
 
 ### 2. Upload Code
 
@@ -30,9 +51,15 @@ This system uses:
 ### 3. Test
 
 1. Tools → Serial Monitor (115200 baud)
-2. Type: `START:10` + Enter
-3. Should see: `S,1234,150,200` (data lines)
-4. Type: `STOP` + Enter
+2. Should see:
+   ```
+   READY
+   NUM_SENSORS:2
+   MODE:AN_CHAINED
+   ```
+3. Type: `START:10` + Enter
+4. Should see: `S,1234,150,200` (data lines)
+5. Type: `STOP` + Enter
 
 ✓ Arduino is ready!
 
@@ -138,7 +165,14 @@ ls /dev/tty* | grep -E "(ACM|USB)"
 **No data showing:**
 - Check Arduino serial monitor first (115200 baud)
 - Verify sensors are powered (5V to VCC)
-- Check wiring connections
+- Check wiring connections and 1kΩ resistors
+- Verify Pin 1 (BW) connected to GND on both sensors
+- Check chaining: Sensor 1 TX → 1kΩ → Sensor 2 RX
+
+**Sensors not triggering in sequence:**
+- Verify D2 connected to Sensor 1 RX
+- Check 1kΩ resistors in TX→RX connections
+- Ensure chain loops back: Sensor 2 TX → Sensor 1 RX
 
 ---
 
@@ -154,8 +188,10 @@ Edit `config.yaml` to change:
 
 ## Next Steps
 
+- Read [WIRING_CHAINED.md](WIRING_CHAINED.md) for detailed chained wiring
 - Read [SETUP_ARDUINO.md](SETUP_ARDUINO.md) for detailed Arduino setup
 - Read [SETUP_ORANGEPI.md](SETUP_ORANGEPI.md) for detailed Orange Pi setup
+- Read [PINOUT.md](PINOUT.md) for complete pin reference
 - Read [README.md](README.md) for complete documentation
 
 ---
@@ -170,7 +206,9 @@ ultrasonic_detection_adc/
 │   ├── realtime_viewer.py     # Live view
 │   └── data_analyzer.py       # Analysis
 ├── data/                       # Output files
-└── config.yaml                 # Settings
+├── config.yaml                 # Settings
+├── WIRING_CHAINED.md          # Chained wiring guide
+└── PINOUT.md                   # Pin reference
 ```
 
 ---
@@ -194,6 +232,8 @@ python -c "import serial, yaml, pandas; print('OK')"
 ```
 
 See detailed docs:
+- **WIRING_CHAINED.md** - Chained sensor wiring
 - SETUP_ARDUINO.md
 - SETUP_ORANGEPI.md
+- PINOUT.md
 - README.md

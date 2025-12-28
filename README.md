@@ -16,6 +16,7 @@ MB1300 Sensors (2x) → Arduino Uno (ADC) → Serial → Orange Pi 5 (Processing
 
 ## Features
 
+- ✅ AN Output Constantly Looping with sensor chaining (prevents interference)
 - ✅ Configurable number of samples per trigger event (default: 10)
 - ✅ Real-time data collection and storage
 - ✅ Time series data recording in CSV or JSON format
@@ -28,19 +29,31 @@ MB1300 Sensors (2x) → Arduino Uno (ADC) → Serial → Orange Pi 5 (Processing
 
 ### MB1300 Sensor Connections
 
-The MB1300 sensors use the **AN Output Constantly Looping** method.
+The MB1300 sensors use **AN Output Constantly Looping with Chaining** to prevent acoustic interference.
 
-**Sensor 1:**
-- VCC → Arduino 5V
-- GND → Arduino GND
-- AN (Analog Output) → Arduino A0
-- TX → Not connected (or Arduino RX if using serial mode)
+**For detailed wiring instructions, see [WIRING_CHAINED.md](WIRING_CHAINED.md)**
 
-**Sensor 2:**
-- VCC → Arduino 5V
-- GND → Arduino GND
-- AN (Analog Output) → Arduino A1
-- TX → Not connected
+**Quick Summary:**
+
+**Sensor 1 (First in chain):**
+- Pin 7 (GND) → Arduino GND
+- Pin 6 (+5V) → Arduino 5V
+- Pin 3 (AN) → Arduino A0
+- Pin 4 (RX) → Arduino D2 (trigger)
+- Pin 5 (TX) → [1kΩ resistor] → Sensor 2 Pin 4 (RX)
+- Pin 1 (BW) → Arduino GND (enables pulse mode)
+
+**Sensor 2 (Second in chain):**
+- Pin 7 (GND) → Arduino GND
+- Pin 6 (+5V) → Arduino 5V
+- Pin 3 (AN) → Arduino A1
+- Pin 4 (RX) → [1kΩ resistor] ← Sensor 1 Pin 5 (TX)
+- Pin 5 (TX) → [1kΩ resistor] → Sensor 1 Pin 4 (RX) - loop back
+- Pin 1 (BW) → Arduino GND (enables pulse mode)
+
+**Required Components:**
+- 2x 1kΩ resistors for TX→RX chaining
+- Breadboard recommended
 
 **Arduino to Orange Pi:**
 - Arduino USB → Orange Pi USB port
@@ -49,10 +62,18 @@ The MB1300 sensors use the **AN Output Constantly Looping** method.
 
 - **Range**: 300mm to 5000mm
 - **Resolution**: 1mm
-- **Output**: ~(Vcc/512) per inch
-- **Update Rate**: ~49ms in constantly looping mode
-- **Supply Voltage**: 3.3V - 5.5V
+- **AN Output**: (Vcc/1024) per cm (~4.9mV/cm at 5V)
+- **Update Rate**: ~49ms per sensor in chaining mode
+- **Supply Voltage**: 3.3V - 5.5V (5V recommended)
 - **Current**: 2.0mA typical, 50mA max
+
+### How Chaining Works
+
+1. Arduino triggers Sensor 1 by pulsing D2 HIGH for 20µS
+2. Sensor 1 ranges (~49ms) and triggers Sensor 2 via TX→RX
+3. Sensor 2 ranges (~49ms) and loops back to trigger Sensor 1
+4. Continuous sequential operation prevents interference
+5. Total cycle time: ~100ms for 2 sensors
 
 ### Pin Configuration
 
@@ -194,7 +215,8 @@ Edit `config.yaml` to customize the system:
 sensors:
   count: 2                    # Number of sensors
   samples_per_trigger: 10     # Samples to collect per trigger
-  sampling_interval_ms: 50    # Time between samples
+  sampling_interval_ms: 100   # Time between sample cycles (sensors fire sequentially)
+  chaining_mode: true         # AN Output Constantly Looping with chaining
 
 # Arduino Configuration
 arduino:
@@ -221,7 +243,7 @@ pins:
 ultrasonic_detection_adc/
 ├── arduino/
 │   └── ultrasonic_adc/
-│       └── ultrasonic_adc.ino    # Arduino ADC code
+│       └── ultrasonic_adc.ino    # Arduino ADC code (chained mode)
 ├── orangepi/
 │   ├── data_collector.py         # Main data collection script
 │   ├── realtime_viewer.py        # Real-time visualization
@@ -229,7 +251,13 @@ ultrasonic_detection_adc/
 ├── data/                          # Output directory for collected data
 ├── config.yaml                    # System configuration
 ├── requirements.txt               # Python dependencies
-└── README.md                      # This file
+├── README.md                      # This file
+├── QUICKSTART.md                  # Quick setup guide
+├── WIRING_CHAINED.md              # Detailed chained wiring guide
+├── PINOUT.md                      # Complete pin reference
+├── SETUP_ARDUINO.md               # Arduino setup instructions
+├── SETUP_ORANGEPI.md              # Orange Pi setup instructions
+└── ARDUINO_CLI_GUIDE.md           # Program Arduino from Orange Pi
 ```
 
 ## Communication Protocol
@@ -256,30 +284,32 @@ The Arduino and Orange Pi communicate via serial using a simple text-based proto
 
 ## Distance Calculation
 
-The MB1300 outputs approximately (Vcc/512) volts per inch:
+The MB1300 outputs approximately (Vcc/1024) per cm:
 
 ```
 For 5V supply:
 - ADC value: 0-1023 (10-bit)
-- Distance (inches) = ADC_value × 0.5
-- Distance (cm) = ADC_value × 0.5 × 2.54
+- Distance (cm) ≈ ADC_value
+- Scaling: ~4.9mV/cm
 ```
 
 Example:
-- ADC = 100 → 50 inches → 127 cm
-- ADC = 200 → 100 inches → 254 cm
+- ADC = 100 → ~100 cm
+- ADC = 250 → ~250 cm
+- ADC = 400 → ~400 cm
 
 ## Expanding the System
 
 ### Adding More Sensors
 
-1. Connect additional MB1300 sensors to Arduino analog pins (A2-A5)
-2. Update `arduino/ultrasonic_adc/ultrasonic_adc.ino`:
+1. Connect additional MB1300 sensors following the chaining pattern (see WIRING_CHAINED.md)
+2. Add 1kΩ resistors between each TX→RX connection
+3. Update `arduino/ultrasonic_adc/ultrasonic_adc.ino`:
    ```cpp
    const int NUM_SENSORS = 3;  // Change from 2 to 3
    const int SENSOR_PINS[] = {A0, A1, A2};  // Add A2
    ```
-3. Update `config.yaml`:
+4. Update `config.yaml`:
    ```yaml
    sensors:
      count: 3
@@ -288,7 +318,9 @@ Example:
      sensor_2: A1
      sensor_3: A2
    ```
-4. Re-upload the Arduino sketch
+5. Re-upload the Arduino sketch
+
+**Note:** With chaining, cycle time increases by ~50ms per sensor added.
 
 ### Adjusting Sample Rate
 
@@ -323,6 +355,9 @@ sudo chmod 666 /dev/ttyACM0
 2. Verify the port in `config.yaml` matches your Arduino
 3. Ensure sensors are properly powered (5V)
 4. Check sensor wiring connections
+5. Verify Pin 1 (BW) connected to GND on both sensors
+6. Check chaining: S1.TX → 1kΩ → S2.RX and S2.TX → 1kΩ → S1.RX
+7. Verify Arduino D2 connected to Sensor 1 Pin 4 (RX)
 
 ### Inaccurate Readings
 

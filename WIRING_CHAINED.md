@@ -133,18 +133,18 @@ Arduino USB Port → Orange Pi USB Port (USB A-to-B cable)
     │  [+5V]═══════════════════════════════════  │ ← Arduino 5V
     │  [GND]═══════════════════════════════════  │ ← Arduino GND
     │                                            │
-    │  Pin 1 (BW) of both sensors to GND rail   │
+    │  Pin 1 (BW) of both sensors to GND rail    │
     │                                            │
-    │  [Sensor 1]              [Sensor 2]       │
-    │   Pin 7 → GND rail       Pin 7 → GND rail │
-    │   Pin 6 → +5V rail       Pin 6 → +5V rail │
-    │   Pin 3 → A0             Pin 3 → A1       │
-    │   Pin 4 → D2 & S2.TX     Pin 4 → S1.TX    │
-    │   Pin 5 → S2.RX          Pin 5 → S1.RX    │
-    │   Pin 1 → GND            Pin 1 → GND      │
+    │  [Sensor 1]              [Sensor 2]        │
+    │   Pin 7 → GND rail       Pin 7 → GND rail  │
+    │   Pin 6 → +5V rail       Pin 6 → +5V rail  │
+    │   Pin 3 → A0             Pin 3 → A1        │
+    │   Pin 4 → D2 & S2.TX     Pin 4 → S1.TX     │
+    │   Pin 5 → S2.RX          Pin 5 → S1.RX     │
+    │   Pin 1 → GND            Pin 1 → GND       │
     │                                            │
-    │  [1kΩ]        [1kΩ]                       │
-    │  S1.TX-S2.RX  S2.TX-S1.RX                 │
+    │  [1kΩ]        [1kΩ]                        │
+    │  S1.TX-S2.RX  S2.TX-S1.RX                  │
     └────────────────────────────────────────────┘
 ```
 
