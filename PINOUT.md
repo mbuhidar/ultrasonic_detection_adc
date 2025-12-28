@@ -23,13 +23,13 @@ Each MB1300 (AE Series) sensor has these pins:
 ```
 MB1300 Sensor (XL-MaxSonar-AE)
 ┌──────────────────────────────────────────────────────────────┐
-│  Pin 1: BW    │ Beam Width / Chaining Control               │
-│  Pin 2: PW    │ Analog Envelope Output (MB1300)             │
+│  Pin 1: BW    │ Beam Width / Chaining Control                │
+│  Pin 2: PW    │ Analog Envelope Output (MB1300)              │
 │  Pin 3: AN    │ Analog Voltage Output ← We use this          │
-│  Pin 4: RX    │ Range Start/Stop Control                    │
-│  Pin 5: TX    │ Serial Output (9600 baud)                   │
-│  Pin 6: +5V   │ Power Supply (Red wire)                     │
-│  Pin 7: GND   │ Ground (Black wire)                         │
+│  Pin 4: RX    │ Range Start/Stop Control                     │
+│  Pin 5: TX    │ Serial Output (9600 baud)                    │
+│  Pin 6: +5V   │ Power Supply (Red wire)                      │
+│  Pin 7: GND   │ Ground (Black wire)                          │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -174,7 +174,7 @@ MB1300 SENSOR 2  │                │             │  │
 
 ### Arduino to Orange Pi
 
-| Arduino Side | Cable      | Orange Pi Side | Notes                    |
+| Arduino Side | Cable      | Orange Pi Side | Notes                   |
 |-------------|------------|----------------|--------------------------|
 | USB Type B  | USB Cable  | USB Type A     | Serial communication     |
 | (built-in)  |            | (any port)     | Also provides power      |
@@ -320,10 +320,10 @@ GND Rail: Arduino GND → All sensor GND pins
     │                                       │
     │  - - - - - - - - - - - - - - - - - -  │ ◄── GND from Arduino
     │                                       │
-    │  [Sensor 1]         [Sensor 2]       │
+    │  [Sensor 1]         [Sensor 2]        │
     │    GND                 GND            │
     │    +5V                 +5V            │
-    │    AN ──► to A0        AN ──► to A1  │
+    │    AN ──► to A0        AN ──► to A1   │
     │                                       │
     └───────────────────────────────────────┘
 ```
@@ -437,7 +437,7 @@ Expected values:
 │  Arduino → Orange Pi:                    │
 │    USB Type B → USB Type A               │
 │                                          │
-│  Scaling: ~4.9mV/cm at 5V (Pin 3 AN)    │
+│  Scaling: ~4.9mV/cm at 5V (Pin 3 AN)     │
 │  Add more sensors to A2-A5               │
 └──────────────────────────────────────────┘
 ```

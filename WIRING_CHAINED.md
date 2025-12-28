@@ -106,20 +106,23 @@ Arduino USB Port → Orange Pi USB Port (USB A-to-B cable)
 
 | Component | Pin | → | Destination | Notes |
 |-----------|-----|---|-------------|-------|
-| **Sensor 1** | Pin 7 (GND) | → | Arduino GND | Black wire |
+| **Sensor 1** |
+| | Pin 7 (GND) | → | Arduino GND | Black wire |
 | | Pin 6 (+5V) | → | Arduino 5V | Red wire |
-| | Pin 3 (AN) | → | Arduino A0 | White wire |
-| | Pin 4 (RX) | → | Arduino D2 | Yellow wire (trigger) |
-| | Pin 4 (RX) | → | Sensor 2 TX + 1kΩ | Blue wire (loop) |
-| | Pin 5 (TX) | → | Sensor 2 RX + 1kΩ | Blue wire (chain) |
-| | Pin 1 (BW) | → | Arduino GND | Enable pulse mode |
-| **Sensor 2** | Pin 7 (GND) | → | Arduino GND | Black wire |
+| | Pin 3 (AN)  | → | Arduino A0 | White wire |
+| | Pin 4 (RX)  | → | Arduino D2 | Yellow wire (trigger) |
+| | Pin 4 (RX)  | → | Sensor 2 TX + 1kΩ | Blue wire (loop) |
+| | Pin 5 (TX)  | → | Sensor 2 RX + 1kΩ | Blue wire (chain) |
+| | Pin 1 (BW)  | → | Arduino GND | Enable pulse mode |
+| **Sensor 2**  | 
+| | Pin 7 (GND) | → | Arduino GND | Black wire |
 | | Pin 6 (+5V) | → | Arduino 5V | Red wire |
-| | Pin 3 (AN) | → | Arduino A1 | White wire |
-| | Pin 4 (RX) | → | Sensor 1 TX + 1kΩ | Blue wire (from S1) |
-| | Pin 5 (TX) | → | Sensor 1 RX + 1kΩ | Blue wire (loop back) |
-| | Pin 1 (BW) | → | Arduino GND | Enable pulse mode |
-| **Resistors** | 1kΩ | between | S1 TX & S2 RX | Signal conditioning |
+| | Pin 3 (AN)  | → | Arduino A1 | White wire |
+| | Pin 4 (RX)  | → | Sensor 1 TX + 1kΩ | Blue wire (from S1) |
+| | Pin 5 (TX)  | → | Sensor 1 RX + 1kΩ | Blue wire (loop back) |
+| | Pin 1 (BW)  | → | Arduino GND | Enable pulse mode |
+| **Resistors** |
+| | 1kΩ | between | S1 TX & S2 RX | Signal conditioning |
 | | 1kΩ | between | S2 TX & S1 RX | Signal conditioning |
 
 ---
