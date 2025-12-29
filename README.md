@@ -1,35 +1,35 @@
-# Ultrasonic Detection ADC System
+# Ultrasonic Echo Profiling System
 
-A comprehensive system for detecting objects using multiple MB1300 ultrasonic sensors with Arduino Uno ADC processing and Orange Pi 5 data collection.
+A comprehensive system for spatial echo profiling using MB1300 ultrasonic sensors with Arduino Uno and Orange Pi 5 for 2-meter range coverage at 1cm resolution.
 
 ## System Architecture
 
 ```
-MB1300 Sensors (2x) → Arduino Uno (ADC) → Serial → Orange Pi 5 (Processing/Storage)
+MB1300 Sensors (PW output) → Arduino Uno (Fast ADC) → Serial → Orange Pi 5 (Analysis)
 ```
 
 ## Components
 
-- **Orange Pi 5**: Primary processing unit for data collection and analysis
-- **Arduino Uno**: ADC converter for analog sensor signals
-- **MaxBotix XL-MaxSonar-AE MB1300**: Ultrasonic sensors (2x to start, expandable)
+- **Orange Pi 5**: Primary processing unit for data collection and visualization
+- **Arduino Uno**: High-speed ADC sampling (50µs intervals) for echo envelope capture
+- **MaxBotix MB1300 (XL-MaxSonar-AE)**: Ultrasonic sensors with PW (acoustic envelope) output
 
 ## Features
 
-- ✅ AN Output Constantly Looping with sensor chaining (prevents interference)
-- ✅ Configurable number of samples per trigger event (default: 10)
-- ✅ Real-time data collection and storage
-- ✅ Time series data recording in CSV or JSON format
-- ✅ Real-time visualization
-- ✅ Data analysis tools with statistics and object detection
-- ✅ Multi-sensor support (easily expandable beyond 2)
-- ✅ Threaded data collection for optimal performance
+- ✅ **Echo profiling**: Captures full acoustic envelope (not just distance)
+- ✅ **1cm spatial resolution** over 2-meter range (240 samples per trigger)
+- ✅ **Fast ADC sampling**: 50µs intervals synchronized with acoustic propagation
+- ✅ **Sensor chaining**: Sequential operation prevents acoustic interference
+- ✅ **Real-time data collection** with CSV storage (separate rows per sensor)
+- ✅ **Advanced visualization**: Echo profiles, heatmaps, distance tracking
+- ✅ **Object detection**: Identifies echoes and tracks movement
+- ✅ **Multi-sensor support**: Expandable architecture
 
 ## Hardware Setup
 
-### MB1300 Sensor Connections
+### MB1300 Sensor Connections (PW Pin Mode)
 
-The MB1300 sensors use **AN Output Constantly Looping with Chaining** to prevent acoustic interference.
+The MB1300 sensors use **PW pin (acoustic envelope output) with Chaining** for spatial echo profiling.
 
 **For detailed wiring instructions, see [WIRING_CHAINED.md](WIRING_CHAINED.md)**
 
@@ -38,7 +38,7 @@ The MB1300 sensors use **AN Output Constantly Looping with Chaining** to prevent
 **Sensor 1 (First in chain):**
 - Pin 7 (GND) → Arduino GND
 - Pin 6 (+5V) → Arduino 5V
-- Pin 3 (AN) → Arduino A0
+- **Pin 2 (PW)** → Arduino A0 **(echo envelope output)**
 - Pin 4 (RX) → Arduino D2 (trigger)
 - Pin 5 (TX) → [1kΩ resistor] → Sensor 2 Pin 4 (RX)
 - Pin 1 (BW) → Arduino GND (enables pulse mode)
@@ -46,7 +46,7 @@ The MB1300 sensors use **AN Output Constantly Looping with Chaining** to prevent
 **Sensor 2 (Second in chain):**
 - Pin 7 (GND) → Arduino GND
 - Pin 6 (+5V) → Arduino 5V
-- Pin 3 (AN) → Arduino A1
+- **Pin 2 (PW)** → Arduino A1 **(echo envelope output)**
 - Pin 4 (RX) → [1kΩ resistor] ← Sensor 1 Pin 5 (TX)
 - Pin 5 (TX) → [1kΩ resistor] → Sensor 1 Pin 4 (RX) - loop back
 - Pin 1 (BW) → Arduino GND (enables pulse mode)
@@ -61,19 +61,21 @@ The MB1300 sensors use **AN Output Constantly Looping with Chaining** to prevent
 ### MB1300 Sensor Specifications
 
 - **Range**: 300mm to 5000mm
-- **Resolution**: 1mm
-- **AN Output**: (Vcc/1024) per cm (~4.9mV/cm at 5V)
+- **Resolution**: 1mm per reading
+- **PW Output**: Raw acoustic envelope (0-Vcc, amplitude of echo returns)
+- **Spatial Resolution**: ~1cm with 50µs sampling intervals
 - **Update Rate**: ~49ms per sensor in chaining mode
 - **Supply Voltage**: 3.3V - 5.5V (5V recommended)
 - **Current**: 2.0mA typical, 50mA max
 
-### How Chaining Works
+### Echo Profiling Method
 
 1. Arduino triggers Sensor 1 by pulsing D2 HIGH for 20µS
-2. Sensor 1 ranges (~49ms) and triggers Sensor 2 via TX→RX
-3. Sensor 2 ranges (~49ms) and loops back to trigger Sensor 1
-4. Continuous sequential operation prevents interference
-5. Total cycle time: ~100ms for 2 sensors
+2. After 300µs (ultrasonic burst transmission), Arduino samples PW pin 240 times
+3. Each sample (50µs apart) captures echo amplitude at progressive distances
+4. 240 samples × 0.86cm/sample = 206cm range coverage at 1cm resolution
+5. Sensors fire sequentially via chaining to prevent interference
+6. Data format: 240 ADC values per sensor per trigger event
 
 ### Pin Configuration
 
@@ -173,22 +175,38 @@ Options:
 - `-s, --samples`: Number of samples per trigger (overrides config)
 - `-d, --duration`: Collection duration in seconds (0 for infinite)
 
-Data is saved to the `data/` directory with timestamps.
+Data is saved to the `data/` directory with timestamps. Each trigger event produces 2 rows (one per sensor) with 240 echo readings each.
 
-### 2. Real-time Visualization
+### 2. Echo Profile Analysis
 
-View sensor data in real-time:
+Analyze echo profile data and visualize spatial information:
+
 ```bash
-python realtime_viewer.py
+# Show all visualizations (profile, heatmap, comparison, distance tracking)
+python echo_analyzer.py ../data/sensor_data_YYYYMMDD_HHMMSS.csv
+
+# View single echo profile
+python echo_analyzer.py data.csv --plot-type profile --sensor 1 --row 5
+
+# View heatmap (shows movement over time)
+python echo_analyzer.py data.csv --plot-type heatmap --sensor 1
+
+# Track object distance over time
+python echo_analyzer.py data.csv --plot-type distance --sensor 1 --threshold 50
+
+# Compare both sensors
+python echo_analyzer.py data.csv --plot-type comparison --row 10
+
+# Generate report with statistics
+python echo_analyzer.py data.csv --report --output report.txt
+
+# Detect objects in specific trigger
+python echo_analyzer.py data.csv --detect --row 5
 ```
 
-Options:
-- `-c, --config`: Path to configuration file
-- `-H, --history`: Number of data points to display (default: 100)
+### 3. Legacy Data Analysis
 
-### 3. Data Analysis
-
-Analyze collected data:
+For simple distance measurements (if using AN pin mode):
 ```bash
 # Show statistics
 python data_analyzer.py ../data/sensor_data_YYYYMMDD_HHMMSS.csv --stats
@@ -196,14 +214,8 @@ python data_analyzer.py ../data/sensor_data_YYYYMMDD_HHMMSS.csv --stats
 # Plot time series
 python data_analyzer.py ../data/sensor_data_YYYYMMDD_HHMMSS.csv --plot
 
-# Plot histogram
-python data_analyzer.py ../data/sensor_data_YYYYMMDD_HHMMSS.csv --histogram
-
 # Detect objects below 100cm threshold
 python data_analyzer.py ../data/sensor_data_YYYYMMDD_HHMMSS.csv --detect 100
-
-# Save plot to file
-python data_analyzer.py ../data/sensor_data_YYYYMMDD_HHMMSS.csv --plot -o plot.png
 ```
 
 ## Configuration
@@ -213,39 +225,50 @@ Edit `config.yaml` to customize the system:
 ```yaml
 # Sensor Configuration
 sensors:
-  count: 2                    # Number of sensors
-  samples_per_trigger: 10     # Samples to collect per trigger
-  sampling_interval_ms: 100   # Time between sample cycles (sensors fire sequentially)
-  chaining_mode: true         # AN Output Constantly Looping with chaining
+  count: 2                      # Number of sensors
+  model: "MB1300"               # Sensor model
+  samples_per_trigger: 10       # Arduino trigger samples (not used in echo mode)
+  readings_per_trigger: 240     # Number of echo samples per trigger (1cm resolution)
+  sampling_interval_ms: 100     # Time between trigger events
+  chaining_mode: true           # Sensors fire sequentially
 
 # Arduino Configuration
 arduino:
-  port: "/dev/ttyACM0"        # Arduino serial port
-  baudrate: 115200            # Serial communication speed
-  timeout: 2                  # Serial timeout in seconds
+  port: "/dev/ttyACM0"          # Arduino serial port
+  baudrate: 115200              # Serial communication speed
+  timeout: 2                    # Serial timeout in seconds
 
 # Data Storage
 data:
-  output_directory: "./data"  # Where to save data files
-  file_format: "csv"          # csv or json
-  buffer_size: 100            # Records to buffer before writing
+  output_directory: "./data"    # Where to save data files
+  file_format: "csv"            # csv or json
+  buffer_size: 100              # Records to buffer before writing
 
-# Pin Mapping
+# Pin Mapping (PW pins for echo profiling)
 pins:
-  sensor_1: A0
-  sensor_2: A1
-  # sensor_3: A2              # Uncomment to add more sensors
+  sensor_1: A0                  # Connect to MB1300 Pin 2 (PW)
+  sensor_2: A1                  # Connect to MB1300 Pin 2 (PW)
+  # sensor_3: A2                # Uncomment to add more sensors
 ```
 
 ## Project Structure
 
 ```
 ultrasonic_detection_adc/
-├── arduino/
-│   └── ultrasonic_adc/
-│       └── ultrasonic_adc.ino    # Arduino ADC code (chained mode)
+├── arduino/echo profiling code (PW pin mode)
 ├── orangepi/
 │   ├── data_collector.py         # Main data collection script
+│   ├── echo_analyzer.py          # Echo profile analysis & visualization
+│   ├── data_analyzer.py          # Legacy analyzer (for AN pin mode)
+│   ├── realtime_viewer.py        # Real-time visualization
+│   └── test_system.py            # System test utilities
+├── data/                          # Collected data files
+├── config.yaml                    # System configuration
+├── WIRING_CHAINED.md             # Detailed wiring guide (PW pin)
+├── PINOUT.md                     # Complete pinout reference
+├── ARDUINO_CLI_GUIDE.md          # Programming Arduino from Orange Pi
+└── README.md                     # This file
+```n script
 │   ├── realtime_viewer.py        # Real-time visualization
 │   └── data_analyzer.py          # Data analysis tools
 ├── data/                          # Output directory for collected data
