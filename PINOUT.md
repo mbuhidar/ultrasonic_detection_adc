@@ -37,13 +37,15 @@ MB1300 Sensor (XL-MaxSonar-AE)
 
 - **Pin 1 (BW)**: Leave open or high for serial output on Pin 5. Hold low for pulse output (chaining mode).
   
-- **Pin 2 (PW)**: Outputs analog voltage envelope of the acoustic waveform. This allows processing the raw waveform. *Not used in this project.*
+- **Pin 2 (PW)**: Outputs analog voltage envelope of the acoustic waveform. This provides the raw echo returns over time for spatial profiling.
+  - **This is the pin we connect to Arduino analog inputs (A0, A1, etc.) for echo profiling**
+  - Outputs 0-Vcc representing echo amplitude at each moment
+  - Must be sampled rapidly (every ~50µs) to capture spatial detail
   
 - **Pin 3 (AN)**: Analog voltage output with scaling factor of (Vcc/1024) per cm.
   - At 5V supply: ~4.9mV/cm
-  - At 3.3V supply: ~3.2mV/cm
-  - Maximum range: ~700cm at 5V, ~600cm at 3.3V
-  - **This is the pin we connect to Arduino analog inputs (A0, A1, etc.)**
+  - Outputs stable DC voltage representing measured distance
+  - *Not used for echo profiling - only for simple distance measurement*
   
 - **Pin 4 (RX)**: Internally pulled high. Sensor continuously measures when high or open. Hold low to stop ranging. Bring high for 20µS or more to trigger a range reading.
   
@@ -53,13 +55,13 @@ MB1300 Sensor (XL-MaxSonar-AE)
   
 - **Pin 7 (GND)**: Ground
 
-**Pin Configuration for AN Output Constantly Looping Mode (Chained):**
+**Pin Configuration for PW Echo Profiling Mode (Chained):**
 
-This method chains sensors so they fire sequentially, preventing interference:
+This method captures the acoustic echo envelope for spatial profiling:
 
 - Pin 1 (BW): **Hold LOW** for pulse output on Pin 5 (required for chaining)
-- Pin 2 (PW): Leave disconnected
-- Pin 3 (AN): **Connect to Arduino analog input (A0, A1, etc.)** ← Signal wire
+- Pin 2 (PW): **Connect to Arduino analog input (A0, A1, etc.)** ← Signal wire for echo envelope
+- Pin 3 (AN): Leave disconnected (not used for echo profiling)
 - Pin 4 (RX): **First sensor:** Connect to Arduino digital pin (pull high to start)
                **Other sensors:** Connect to previous sensor's Pin 5 (TX) via 1kΩ resistor
 - Pin 5 (TX): **Connect to next sensor's Pin 4 (RX) via 1kΩ resistor** (pulse chaining)
@@ -82,7 +84,7 @@ This method chains sensors so they fire sequentially, preventing interference:
 
 ## Complete Wiring Diagram
 
-### Two-Sensor Configuration (AN Constantly Looping with Chaining)
+### Two-Sensor Configuration (PW Echo Profiling with Chaining)
 
 ```
 MB1300 SENSOR 1                    ARDUINO UNO
@@ -92,8 +94,8 @@ MB1300 SENSOR 1                    ARDUINO UNO
 │             │  (Black)          │             │
 │  Pin 6 +5V  ├──────────────────►│  5V         │
 │             │  (Red)            │             │
-│  Pin 3 AN   ├──────────────────►│  A0         │
-│             │  (Analog Signal)  │             │
+│  Pin 2 PW   ├──────────────────►│  A0         │
+│             │  (Echo Envelope)  │             │
 │  Pin 4 RX   ├───────────────────┤  D2 (Trig)  │◄─┐
 │             │  (Start Chain)    │             │  │
 │  Pin 1 BW   ├──────────────────►│  GND        │  │

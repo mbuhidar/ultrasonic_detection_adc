@@ -1,6 +1,6 @@
-# AN Output Constantly Looping - Chained Wiring Guide
+# PW Echo Profiling - Chained Wiring Guide
 
-Step-by-step guide for wiring MB1300 sensors in AN Output Constantly Looping mode with chaining.
+Step-by-step guide for wiring MB1300 sensors using PW (acoustic envelope) output with chaining for spatial echo profiling.
 
 ---
 
@@ -48,14 +48,16 @@ Sensor 2 Pin 6 (+5V) → Arduino 5V (Red wire)
 
 **Tip:** Use breadboard power rails for cleaner wiring.
 
-### Step 2: Analog Outputs
+### Step 2: Echo Envelope Outputs
 
-Connect the AN pins to Arduino analog inputs:
+Connect the PW pins to Arduino analog inputs for echo profiling:
 
 ```
-Sensor 1 Pin 3 (AN) → Arduino A0 (White/Signal wire)
-Sensor 2 Pin 3 (AN) → Arduino A1 (White/Signal wire)
+Sensor 1 Pin 2 (PW) → Arduino A0 (White/Signal wire)
+Sensor 2 Pin 2 (PW) → Arduino A1 (White/Signal wire)
 ```
+
+**Important:** Use PW (Pin 2), not AN (Pin 3), to capture the acoustic echo envelope.
 
 ### Step 3: Enable Pulse Mode
 
