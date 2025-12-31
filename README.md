@@ -2,17 +2,32 @@
 
 A comprehensive system for spatial echo profiling using MB1300 ultrasonic sensors with Arduino Uno and Orange Pi 5 for 2-meter range coverage at 1cm resolution.
 
+**NEW:** Optional RPLIDAR integration for ML training with 2D position ground truth!
+
 ## System Architecture
 
+### Basic Echo Profiling Mode
 ```
 MB1300 Sensors (PW output) → Arduino Uno (Fast ADC) → Serial → Orange Pi 5 (Analysis)
 ```
 
+### Optional: ML Training Mode (with RPLIDAR)
+```
+MB1300 Sensors (Echo) ──→ Arduino Uno ──→ USB Serial ──→ Orange Pi 5 (Data Fusion)
+RPLIDAR A1 (2D Position) ────────────→ USB Serial ──→
+```
+
+**Note:** RPLIDAR is only needed if you want to collect ML training data with ground truth position labels.
+
 ## Components
 
+### Required
 - **Orange Pi 5**: Primary processing unit for data collection and visualization
 - **Arduino Uno**: High-speed ADC sampling (50µs intervals) for echo envelope capture
 - **MaxBotix MB1300 (XL-MaxSonar-AE)**: Ultrasonic sensors with PW (acoustic envelope) output
+
+### Optional (for ML Training)
+- **RPLIDAR A1M8**: 2D LiDAR for ground truth position data (~$100)
 
 ## Features
 
@@ -24,6 +39,8 @@ MB1300 Sensors (PW output) → Arduino Uno (Fast ADC) → Serial → Orange Pi 5
 - ✅ **Advanced visualization**: Echo profiles, heatmaps, distance tracking
 - ✅ **Object detection**: Identifies echoes and tracks movement
 - ✅ **Multi-sensor support**: Expandable architecture
+- 🔧 **Optional: RPLIDAR integration**: Synchronized 2D position ground truth for ML training
+- 🔧 **Optional: ML training data**: 240 acoustic features + (x,y) position labels
 
 ## Hardware Setup
 
@@ -203,6 +220,29 @@ python echo_analyzer.py data.csv --report --output report.txt
 # Detect objects in specific trigger
 python echo_analyzer.py data.csv --detect --row 5
 ```
+
+### 3. ML Training with RPLIDAR (Optional)
+
+**Collect synchronized ultrasonic echo + RPLIDAR position data for ML training:**
+
+```bash
+# Install RPLIDAR library first
+pip install rplidar-roboticia
+
+# Collect training data with 2D position ground truth
+python data_collector_with_lidar.py --duration 120
+
+# Output: training_data_YYYYMMDD_HHMMSS.csv
+# Format: 240 echo values (features) + (x,y) position (labels)
+```
+
+**See [RPLIDAR_SETUP.md](RPLIDAR_SETUP.md) for detailed setup instructions.**
+
+### 4. Legacy Data Analysis
+
+**See [RPLIDAR_SETUP.md](RPLIDAR_SETUP.md) for detailed setup instructions.**
+
+### 4. 
 
 ### 3. Legacy Data Analysis
 

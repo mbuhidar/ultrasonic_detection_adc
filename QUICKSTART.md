@@ -8,6 +8,9 @@ This system uses:
 - **2x MB1300 ultrasonic sensors** → detect objects (chained for sequential operation)
 - **Arduino Uno** → convert analog signals to digital
 - **Orange Pi 5** → collect and analyze data
+- **RPLIDAR A1M8** (optional) → ground truth position data for ML training
+
+**Note:** This guide covers the basic system setup. RPLIDAR is optional - see [RPLIDAR_SETUP.md](RPLIDAR_SETUP.md) if you need it later.
 
 ## Arduino Setup (10 minutes)
 
@@ -19,24 +22,24 @@ This system uses:
 - Jumper wires
 
 **Sensor 1 (First in chain):**
-| MB1300 Pin | Arduino Pin | Wire Color |
-|------------|-------------|------------|
-| Pin 1 (BW) | GND         | Black      |
-| Pin 3 (AN) | A0          | White      |
-| Pin 4 (RX) | D2          | Yellow     |
-| Pin 5 (TX) | → 1kΩ → Sensor 2 RX | Blue |
-| Pin 6 (+5V)| 5V          | Red        |
-| Pin 7 (GND)| GND         | Black      |
+| MB1300 Pin | Arduino Pin         | Wire Color |
+|------------|---------------------|------------|
+| Pin 1 (BW) | GND                 | Black      |
+| Pin 3 (AN) | A0                  | White      |
+| Pin 4 (RX) | D2                  | Yellow     |
+| Pin 5 (TX) | → 1kΩ → Sensor 2 RX | Blue       |
+| Pin 6 (+5V)| 5V                  | Red        |
+| Pin 7 (GND)| GND                 | Black      |
 
 **Sensor 2 (Second in chain):**
-| MB1300 Pin | Arduino Pin | Wire Color |
-|------------|-------------|------------|
-| Pin 1 (BW) | GND         | Black      |
-| Pin 3 (AN) | A1          | White      |
-| Pin 4 (RX) | ← 1kΩ ← Sensor 1 TX | Yellow |
-| Pin 5 (TX) | → 1kΩ → Sensor 1 RX | Blue |
-| Pin 6 (+5V)| 5V          | Red        |
-| Pin 7 (GND)| GND         | Black      |
+| MB1300 Pin | Arduino Pin         | Wire Color |
+|------------|---------------------|------------|
+| Pin 1 (BW) | GND                 | Black      |
+| Pin 3 (AN) | A1                  | White      |
+| Pin 4 (RX) | ← 1kΩ ← Sensor 1 TX | Yellow     |
+| Pin 5 (TX) | → 1kΩ → Sensor 1 RX | Blue       |
+| Pin 6 (+5V)| 5V                  | Red        |
+| Pin 7 (GND)| GND                 | Black      |
 
 **Important:** The 1kΩ resistors between TX and RX pins are required!
 

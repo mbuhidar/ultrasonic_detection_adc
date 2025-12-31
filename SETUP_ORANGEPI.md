@@ -4,11 +4,15 @@ Follow these steps to set up the Orange Pi 5 for data collection and analysis.
 
 ## Prerequisites
 
+### Required
 - Orange Pi 5 with Ubuntu/Debian-based OS
 - Internet connection
 - Arduino Uno already set up with chained sensor configuration (see WIRING_CHAINED.md)
 - Arduino connected via USB
 - SSH access or direct terminal access
+
+### Optional (for ML Training)
+- RPLIDAR A1M8 connected via USB (see [RPLIDAR_SETUP.md](RPLIDAR_SETUP.md))
 
 ## Quick Start (One Command)
 

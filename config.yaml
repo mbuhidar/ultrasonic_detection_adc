@@ -1,31 +1,70 @@
-# Ultrasonic Detection Configuration
+# Ultrasonic Echo Profiling + RPLIDAR System Configuration
 
 # Sensor Configuration
 sensors:
-  count: 2
-  model: "MB1300"
-  samples_per_trigger: 10
-  readings_per_trigger: 240  # 240 samples at 50us intervals = 2m range at ~1cm resolution
-  sampling_interval_ms: 100  # Time between sample cycles (sensors fire sequentially)
-  chaining_mode: true        # AN Output Constantly Looping with sensor chaining
+  count: 2                      # Number of ultrasonic sensors
+  model: "MB1300"               # Sensor model
+  samples_per_trigger: 10       # Arduino trigger samples (not used in echo mode)
+  readings_per_trigger: 240     # Number of echo samples per trigger (1cm resolution)
+  sampling_interval_ms: 100     # Time between trigger events
+  chaining_mode: true           # Sensors fire sequentially
 
 # Arduino Configuration
 arduino:
-  port: "/dev/ttyACM0"  # Update based on your system
-  baudrate: 115200
-  timeout: 2
+  port: "/dev/ttyACM0"          # Arduino serial port
+  baudrate: 115200              # Serial communication speed
+  timeout: 2                    # Serial timeout in seconds
+
+# RPLIDAR Configuration (OPTIONAL - only needed for ML training with ground truth)
+# Comment out this entire section if you don't have RPLIDAR hardware
+lidar:
+  port: "/dev/ttyUSB0"          # RPLIDAR serial port
+  model: "RPLIDAR_A1"           # RPLIDAR model (A1, A2, A3)
+  scan_rate: 5.5                # Hz (A1: 5.5Hz, A2: 10Hz)
+
+# Sensor Position Mapping (OPTIONAL - only needed for LIDAR-based ML training)
+# Coordinates relative to RPLIDAR center (0, 0) in cm
+# Comment out this section if not using RPLIDAR
+# Rectangle: 29.5" × 52.36" (74.93cm wide × 132.99cm long)
+# LIDAR at center, 0° = right, 90° = forward (toward front edge)
+# Front edge (29.5" / 74.93cm wide) at Y = +66.5cm
+# Sensors at corners covering area outside/forward of rectangle
+sensor_positions:
+  sensor_1:
+    x: -37.47                   # cm - Left end of front edge
+    y: 66.5                     # cm - Front edge position
+    angle: 30                   # degrees - Facing outward-right-forward (one FOV edge along front edge)
+    fov: 60                     # degrees - Field of view
+  sensor_2:
+    x: 37.47                    # cm - Right end of front edge
+    y: 66.5                     # cm - Front edge position
+    angle: 150                  # degrees - Facing outward-left-forward (one FOV edge along front edge)
+    fov: 60                     # degrees - Field of view
+  # Add more sensors as needed:
+  # sensor_3:
+  #   x: 0
+  #   y: -15
+  #   angle: 0
+  #   fov: 60
+
+# Synchronization Configuration (OPTIONAL - only for LIDAR data fusion)
+# Comment out this section if not using RPLIDAR
+sync:
+  window_ms: 50                 # Match timestamps within this window (ms)
+  buffer_size: 100              # Max samples to buffer for matching
 
 # Data Storage Configuration
 data:
-  output_directory: "./data"
-  file_format: "csv"  # csv or json
+  output_directory: "./data"    # Where to save data files
+  file_format: "csv"            # csv or json
   include_timestamp: true
-  buffer_size: 100  # Number of readings to buffer before writing
+  buffer_size: 100              # Number of readings to buffer before writing
 
-# Sensor Pin Mapping (Arduino Analog Pins)
+# Sensor Pin Mapping (Arduino Analog Pins - PW pins for echo profiling)
 pins:
-  sensor_1: A0
-  sensor_2: A1
+  sensor_1: A0                  # Connect to MB1300 Pin 2 (PW)
+  sensor_2: A1                  # Connect to MB1300 Pin 2 (PW)
   # Add more sensors as needed
-  # sensor_3: A2
+  # sensor_3: A2                # Uncomment to add more sensors
+
   # sensor_4: A3
