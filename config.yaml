@@ -25,11 +25,9 @@ lidar:
 # Sensor Position Mapping (OPTIONAL - only needed for LIDAR-based ML training)
 # Coordinates relative to RPLIDAR center (0, 0) in cm
 # Comment out this section if not using RPLIDAR
-# Rectangle: 29.5" × 52.36" (74.93cm wide × 132.99cm long)
-# LIDAR at center, 0° = right, 90° = forward (toward front edge)
-# Front edge (29.5" / 74.93cm wide) at Y = +66.5cm
-# Sensors at corners covering area outside/forward of rectangle
 sensor_positions:
+  front_line_y: 66.5              # cm - Distance from RPLIDAR to front edge
+                                   # LIDAR data will be transformed to front-line-relative coordinates
   sensor_1:
     x: -37.47                   # cm - Left end of front edge
     y: 66.5                     # cm - Front edge position

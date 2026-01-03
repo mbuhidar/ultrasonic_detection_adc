@@ -236,6 +236,12 @@ python data_collector_with_lidar.py --duration 120
 # Format: 240 echo values (features) + (x,y) position (labels)
 ```
 
+**Position Data:**
+- Captures only objects **in front of the box** (Y > 66.5cm from RPLIDAR)
+- Records the **nearest point to the front line** (minimum Y value)
+- Coordinates are **front-line-relative**: X = left/right position, Y = distance in front
+- Y=0 is the front edge of the box, positive Y extends forward
+
 **See [RPLIDAR_SETUP.md](RPLIDAR_SETUP.md) for detailed setup instructions.**
 
 ### 4. Legacy Data Analysis

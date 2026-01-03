@@ -71,10 +71,18 @@ Complete physical layout diagram for ultrasonic echo profiling system with optio
                     BACK (Rear, 270°)
 
 Coordinate System:
-  Origin (0,0): RPLIDAR center (center of rectangle)
-  X-axis: Left (-) to Right (+)
-  Y-axis: Back (-) to Front (+)
-  Angles: 0° = Right, 90° = Front, 180° = Left, 270° = Back
+  Hardware (RPLIDAR-centered):
+    Origin (0,0): RPLIDAR center (center of rectangle)
+    X-axis: Left (-) to Right (+)
+    Y-axis: Back (-) to Front (+)
+    Angles: 0° = Right, 90° = Front, 180° = Left, 270° = Back
+
+  Training Data (Front-line-relative):
+    Origin (0,0): Center of front edge
+    X-axis: Left (-) to Right (+), same as hardware
+    Y-axis: Distance in front of box (0 = front edge, positive = forward)
+    Only objects with Y > 0 (in front of box) are captured
+    Records nearest point to front line (minimum Y value)
 
 Sensor Mounting:
   Both sensors physically mounted ON the front edge of the box

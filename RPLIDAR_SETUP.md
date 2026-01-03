@@ -22,60 +22,177 @@ If you only want to collect echo profile data without position labels, you can s
 ## Hardware Requirements
 
 - **RPLIDAR A1M8** (recommended, ~$100) or A2M8 (~$320)
-- USB-to-Serial adapter (usually included with RPLIDAR)
-- 5V power supply (500mA minimum for A1)
-- Mounting hardware for positioning above sensor array
+- USB-to-Serial adapter (CP2102 or similar, usually included with RPLIDAR)
+- 5V power supply (500mA minimum for A1, external recommended)
+- Mounting hardware for positioning at center of platform
+
+## USB Connection Overview
+
+Both the Arduino and RPLIDAR connect to separate USB ports on the Orange Pi:
+
+```
+Orange Pi 5
+├── USB Port 1 → Arduino Uno (USB-A to USB-B cable)
+│   └── /dev/ttyACM0
+│
+└── USB Port 2 → RPLIDAR A1 (USB-to-Serial adapter)
+    └── /dev/ttyUSB0
+```
+
+### Arduino Uno Connection
+- **Cable**: Standard USB-A to USB-B cable (printer-style cable)
+- **Arduino side**: USB-B port on Arduino Uno board
+- **Orange Pi side**: Any USB-A port (USB 2.0 or 3.0)
+- **Device name**: `/dev/ttyACM0` (or `/dev/ttyACM1`)
+- **Power**: Arduino powered via USB from Orange Pi (draws ~200mA)
+
+### RPLIDAR Connection
+- **Adapter**: USB-to-Serial adapter (CP2102, usually included with RPLIDAR)
+- **RPLIDAR side**: 4-pin connector → Adapter wires
+- **Orange Pi side**: USB-A port (adapter's USB connector)
+- **Device name**: `/dev/ttyUSB0` (or `/dev/ttyUSB1`)
+- **Power**: Motor requires external 5V supply (500mA), USB only for data
+
+### Identifying Devices
+
+```bash
+# List all USB serial devices
+ls -l /dev/tty{ACM,USB}*
+
+# Expected output:
+# /dev/ttyACM0  ← Arduino Uno
+# /dev/ttyUSB0  ← RPLIDAR
+
+# More detailed info
+dmesg | tail -20
+# Look for:
+# "Arduino Uno" or "ttyACM0: USB ACM device"
+# "CP210x" or "ttyUSB0: USB Serial converter"
+```
 
 ## Physical Setup
 
 ### 1. RPLIDAR Mounting
 
-Mount the RPLIDAR at the center of your ultrasonic sensor array, typically overhead or ceiling-mounted:
+Mount the RPLIDAR at the **center (0, 0)** of your rectangular platform:
 
 ```
-        [RPLIDAR]  ← Ceiling/overhead mount
-           (0,0)     Center of coordinate system
-            
-    [-15cm] [+15cm]
-      S1        S2    ← Ultrasonic sensors below
+Platform dimensions: 29.5" × 52.36" (74.93cm × 132.99cm)
+
+         Front (short edge)
+    ┌─────────────────────────┐
+    │  S1                  S2 │  ← Ultrasonic sensors on front edge
+    │                         │
+    │          [LIDAR]        │  ← Center of platform (0, 0)
+    │           (0,0)         │
+    │                         │
+    │                         │
+    └─────────────────────────┘
+         Back (short edge)
 ```
 
 **Coordinate System:**
-- **Origin (0, 0)**: RPLIDAR center
+
+**Hardware Coordinates (RPLIDAR-centered):**
+- **Origin (0, 0)**: RPLIDAR at center of platform
 - **X-axis**: Left (-) to Right (+)
-- **Y-axis**: Back (-) to Forward (+)
-- **Z-axis**: Down (-) to Up (+)
-- **Angles**: 0° = Right, 90° = Forward, 180° = Left, 270° = Back
+- **Y-axis**: Back (-) to Front (+)
+- **Front edge**: Y = +66.5cm (half of 132.99cm length)
+- **0° reference**: Points toward front of platform
 
-### 2. RPLIDAR Connections
+**Training Data Coordinates (Front-line-relative):**
+- **Origin (0, 0)**: Center of front edge
+- **X-axis**: Left (-) to Right (+), same as hardware
+- **Y-axis**: Distance in front of the platform (always ≥ 0)
+  - 0 = at front edge
+  - Positive values = forward distance from edge
+- **Transformation**: `x_train = x_rplidar`, `y_train = y_rplidar - 66.5`
 
-**RPLIDAR → USB Adapter → Orange Pi:**
+**Data Filtering:**
+- Only RPLIDAR points with Y > 66.5cm (in front of platform) are included
+- From filtered points, the one **nearest to the front line** is selected
+- This gives you the closest object position in front of your sensors
+
+### 2. RPLIDAR Wiring
+
+**Detailed Connection Diagram:**
 
 ```
-RPLIDAR Connector        USB-Serial Adapter
-─────────────────        ──────────────────
-Pin 1 (GND, black)   →   GND
-Pin 2 (5V, red)      →   5V (external supply recommended)
-Pin 3 (TX, green)    →   RX
-Pin 4 (RX, white)    →   TX
-Pin 5 (Motor PWM)    →   (leave disconnected for full speed)
+RPLIDAR 4-pin Connector    USB-to-Serial Adapter (CP2102)
+───────────────────────    ──────────────────────────────
+Pin 1 (GND)  black     →   GND (black wire)
+Pin 2 (5V)   red       →   5V External Supply (500mA min)
+Pin 3 (TX)   green     →   RX (white wire)
+Pin 4 (RX)   white     →   TX (green wire)
+Pin 5 (PWM)  yellow    →   (not connected, full speed)
+
+                           USB Connector
+                                │
+                                │
+                                ▼
+                        Orange Pi USB Port
+                        (any USB 2.0/3.0 port)
+                        → /dev/ttyUSB0
 ```
 
-**Power Options:**
-1. **External 5V supply** (recommended for A1): 500mA minimum
-2. **Powered USB hub**: Ensure adequate current capacity
-3. **Orange Pi USB**: May work but check power budget
+**Power Setup:**
 
-### 3. Connect to Orange Pi
+```
+External 5V Power Supply
+(500mA minimum, 1A recommended)
+        │
+        ├─→ 5V (red wire) → RPLIDAR Pin 2
+        └─→ GND (black wire) → RPLIDAR Pin 1
+                               (also connect to adapter GND)
+```
 
-Plug the USB-Serial adapter into the Orange Pi:
+**Important Power Notes:**
+- **DO NOT** power RPLIDAR motor from USB adapter's 5V pin
+- USB data pins cannot provide enough current (500mA needed)
+- Motor stall or unreliable operation will occur without external power
+- Use a dedicated 5V power supply or powered USB hub
+- Ground must be common between RPLIDAR, adapter, and Orange Pi
+
+### 3. Complete System Wiring
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    Orange Pi 5                       │
+│                                                      │
+│  USB Port 1  ←─── USB-A to USB-B ───→ Arduino Uno  │
+│  /dev/ttyACM0                                       │
+│                                                      │
+│  USB Port 2  ←─── USB-to-Serial ────→ RPLIDAR A1   │
+│  /dev/ttyUSB0        Adapter                        │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+
+Arduino Uno                          RPLIDAR A1
+    │                                    │
+    │ D2 ──────→ Sensor Chain           │ 4-pin connector
+    │ A0 ←────── Sensor 1 PW             │  ├── Pin 1 (GND)
+    │ A1 ←────── Sensor 2 PW             │  ├── Pin 2 (5V) ←─── External 5V
+    │                                    │  ├── Pin 3 (TX)
+    └── USB-B ──→ Orange Pi              │  └── Pin 4 (RX)
+                                         │
+                                    USB Adapter
+                                    └── USB-A ──→ Orange Pi
+```
+
+### 4. Connect to Orange Pi
 
 ```bash
-# Check which port RPLIDAR is on
-ls -l /dev/ttyUSB*
+# Plug in Arduino first
+ls -l /dev/ttyACM0
+# Should show: crw-rw---- 1 root dialout ... /dev/ttyACM0
 
-# Expected output: /dev/ttyUSB0 (or ttyUSB1, etc.)
-# Update config.yaml if different
+# Plug in RPLIDAR with external power
+ls -l /dev/ttyUSB0
+# Should show: crw-rw---- 1 root dialout ... /dev/ttyUSB0
+
+# If you see permission errors, add user to dialout group
+sudo usermod -a -G dialout $USER
+# Then logout and login
 ```
 
 ## Software Setup
@@ -132,39 +249,39 @@ RPLIDAR Health:
 ✓ RPLIDAR working!
 ```
 
-### 3. Configure Sensor Positions
+### 3. Test Both Devices
 
-Edit `config.yaml` to match your physical sensor layout:
+```bash
+# Terminal 1: Check Arduino data
+cat /dev/ttyACM0
+# Should see: S,timestamp,readings... scrolling
 
-```yaml
-# Update these coordinates to match your actual setup
-sensor_positions:
-  sensor_1:
-    x: -15      # 15cm left of RPLIDAR
-    y: 0        # Same front/back position
-    angle: 90   # Facing forward
-    fov: 60     # 60° field of view
-  
-  sensor_2:
-    x: 15       # 15cm right of RPLIDAR
-    y: 0
-    angle: 90
-    fov: 60
+# Terminal 2: Check RPLIDAR data
+python3 -c "from rplidar import RPLidar; [print(f'Scan: {len(s)} points') for s in RPLidar('/dev/ttyUSB0').iter_scans()]"
+# Should see: Scan: XXX points (repeating)
 ```
 
-**Measuring Your Layout:**
+### 4. Configure Sensor Positions
 
-1. **Mount RPLIDAR** at center of your detection area
-2. **Mark origin**: RPLIDAR position = (0, 0)
-3. **Measure sensor offsets**: 
-   - X: Left/right from RPLIDAR (cm)
-   - Y: Forward/back from RPLIDAR (cm)
-4. **Determine sensor orientation**:
-   - 0° = pointing right
-   - 90° = pointing forward
-   - 180° = pointing left
-   - 270° = pointing back
-5. **Estimate FOV**: MB1300 typically has ~60° beam width
+The `config.yaml` file already has the correct positions for your platform layout:
+
+```yaml
+# Platform dimensions (cm)
+sensor_positions:
+  front_line_y: 66.5  # Distance from RPLIDAR (0,0) to front edge
+
+  sensor_1:
+    x: -37.47         # Left corner of front edge
+    y: 66.5           # At front edge
+    angle: 30         # Pointing inward-right (30°)
+  
+  sensor_2:
+    x: 37.47          # Right corner of front edge
+    y: 66.5           # At front edge
+    angle: 150        # Pointing inward-left (150°)
+```
+
+**No changes needed** unless you modify your physical layout!
 
 ## Usage
 
@@ -204,11 +321,17 @@ lidar_x,lidar_y,lidar_quality,lidar_distance,num_objects
 - `arduino_timestamp_ms`: Arduino millis() value
 - `sensor_id`: Which ultrasonic sensor (1, 2, ...)
 - `echo_r1` to `echo_r240`: Echo amplitude profile (0-1023 ADC values)
-- `lidar_x`: Object X position in cm from RPLIDAR
-- `lidar_y`: Object Y position in cm from RPLIDAR
+- `lidar_x`: Object X position (cm) relative to front line center (- = left, + = right)
+- `lidar_y`: Object Y position (cm) in front of box (0 = front edge, + = forward)
 - `lidar_quality`: RPLIDAR signal quality (0-15, higher is better)
-- `lidar_distance`: Distance to object in cm
+- `lidar_distance`: Distance to object from RPLIDAR (cm)
 - `num_objects`: Total objects detected in LIDAR scan
+
+**Position Data Notes:**
+- Only objects **in front of the box** (Y > 66.5cm from RPLIDAR) are captured
+- Position is the **nearest point to the front line** (minimum Y value from filtered points)
+- Coordinates are **front-line-relative**: (0,0) is center of front edge
+- All Y values in training data are ≥ 0 (0 = at front line, positive = forward distance)
 
 ### Data Collection Tips
 
@@ -220,12 +343,27 @@ lidar_x,lidar_y,lidar_quality,lidar_distance,num_objects
 
 ## Coordinate System Calibration
 
+### Understanding the Coordinate Systems
+
+**Hardware Coordinates (RPLIDAR-centered):**
+- Origin: RPLIDAR center (middle of box)
+- X-axis: Left (-) to Right (+)
+- Y-axis: Back (-) to Front (+)
+- Front edge is at Y = +66.5cm
+
+**Training Data Coordinates (Front-line-relative):**
+- Origin: Center of front edge
+- X-axis: Left (-) to Right (+), same as hardware
+- Y-axis: Distance in front of box (0 = front edge, positive values forward)
+- Transformation: `x_train = x_rplidar`, `y_train = y_rplidar - 66.5`
+- Only points with `y_rplidar > 66.5` are included
+
 ### Quick Calibration Method
 
-1. **Place marker object** at known position:
+1. **Place marker object** in front of the box at known position:
    ```
-   Example: 100cm forward, 0cm lateral from RPLIDAR
-   Position: (x=0, y=100)
+   Example: 50cm forward from front edge, centered
+   Expected training coordinates: (x=0, y=50)
    ```
 
 2. **Run test collection:**
@@ -240,9 +378,9 @@ lidar_x,lidar_y,lidar_quality,lidar_distance,num_objects
    ```
 
 4. **Verify positions**:
-   - `lidar_x` should be near 0 cm
-   - `lidar_y` should be near 100 cm
-   - Adjust `sensor_positions` in config if needed
+   - `lidar_x` should be near 0 cm (centered)
+   - `lidar_y` should be near 50 cm (distance from front)
+   - If incorrect, check `front_line_y` setting in config.yaml
 
 ### Verification Script
 
@@ -282,20 +420,36 @@ EOF
 # Check USB connection
 lsusb | grep -i CP210
 
-# Check permissions
-ls -l /dev/ttyUSB0
+# Check device file
+ls -l /dev/ttyUSB*
 
 # If permission denied, add user to dialout group
 sudo usermod -a -G dialout $USER
-# Then logout and login for this to take effect
+# Then logout and login
 
 # Or temporarily fix permissions
 sudo chmod 666 /dev/ttyUSB0
 ```
 
+### Arduino Not Detected
+
+```bash
+# Check USB connection
+lsusb | grep -i Arduino
+
+# Check device file
+ls -l /dev/ttyACM*
+
+# Fix permissions
+sudo chmod 666 /dev/ttyACM0
+```
+
 ### Motor Not Spinning
 
 ```bash
+# Check if motor is getting power
+# Motor should spin when RPLIDAR is connected
+
 # Test motor control
 python3 << 'EOF'
 from rplidar import RPLidar
@@ -304,13 +458,19 @@ import time
 print("Testing RPLIDAR motor...")
 lidar = RPLidar('/dev/ttyUSB0')
 lidar.start_motor()
-print("Motor should be spinning now")
+print("Motor should be spinning now - listen for sound")
 time.sleep(5)
 lidar.stop_motor()
 lidar.disconnect()
 print("✓ Motor test complete")
 EOF
 ```
+
+**If motor doesn't spin:**
+1. Check external 5V power supply is connected
+2. Verify 500mA minimum current capacity
+3. Check GND connection between power supply and RPLIDAR
+4. Try different power supply
 
 ### Poor Synchronization (Low Match Rate)
 
@@ -341,6 +501,19 @@ If match rate is < 80%:
    - Monitor queue sizes in progress reports
    - If queues fill up (>150), system is overloaded
    - Try closing other programs
+
+### Device Names Swap on Reboot
+
+If `/dev/ttyACM0` and `/dev/ttyUSB0` swap positions:
+
+```bash
+# Check which is which
+udevadm info /dev/ttyACM0 | grep ID_MODEL
+udevadm info /dev/ttyUSB0 | grep ID_MODEL
+
+# Update config.yaml with correct ports
+nano config.yaml
+```
 
 ### No LIDAR Data in Output
 

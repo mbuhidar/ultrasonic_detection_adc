@@ -6,6 +6,9 @@ Creates ML training dataset with:
 - Features: 240-point echo profiles from ultrasonic sensors
 - Labels: (x, y) position ground truth from RPLIDAR
 
+Position data captures only objects in front of the box (nearest to front line)
+with coordinates relative to the front edge (Y=0 at front line).
+
 Usage:
     python data_collector_with_lidar.py
     python data_collector_with_lidar.py --duration 120
@@ -141,22 +144,33 @@ class SynchronizedDataCollector:
     
     def _process_lidar_scan(self, scan):
         """
-        Convert RPLIDAR scan to (x, y) coordinates.
+        Convert RPLIDAR scan to (x, y) coordinates, filtering for objects in front of box.
+        Returns coordinates relative to front line (Y=0 at front line).
         
         Args:
             scan: RPLIDAR scan data [(quality, angle, distance), ...]
             
         Returns:
-            List of (x, y, quality, distance) tuples in cm
+            List of (x, y, quality, distance) tuples in cm, relative to front line
         """
+        # Get front line Y position from config (distance from RPLIDAR to front edge)
+        front_line_y = self.config['sensor_positions']['front_line_y']
+        
         positions = []
         for quality, angle, distance in scan:
             if quality > 0 and distance > 0:
-                # Convert polar to cartesian
+                # Convert polar to cartesian (RPLIDAR-centered coordinates)
                 angle_rad = np.radians(angle)
-                x = (distance / 10) * np.cos(angle_rad)  # mm to cm
-                y = (distance / 10) * np.sin(angle_rad)
-                positions.append((x, y, quality, distance / 10))
+                x_rplidar = (distance / 10) * np.cos(angle_rad)  # mm to cm
+                y_rplidar = (distance / 10) * np.sin(angle_rad)
+                
+                # Only include points in front of the box (Y > front_line_y)
+                if y_rplidar > front_line_y:
+                    # Transform to front-line-relative coordinates
+                    # X stays the same, Y becomes distance from front line
+                    x = x_rplidar
+                    y = y_rplidar - front_line_y  # Distance in front of the line
+                    positions.append((x, y, quality, distance / 10))
         return positions
     
     def synchronize_and_save(self):
@@ -270,48 +284,24 @@ class SynchronizedDataCollector:
     
     def _find_relevant_object(self, sensor_id, positions):
         """
-        Find LIDAR object in sensor's field of view.
+        Find the nearest LIDAR point to the front line (minimum Y value).
+        
+        Since positions are already filtered to objects in front and coordinates
+        are relative to the front line, we simply find the point with minimum Y.
         
         Args:
-            sensor_id: Sensor ID (1, 2, ...)
-            positions: List of (x, y, quality, distance) tuples
+            sensor_id: Sensor ID (1, 2, ...) - not used in this simplified version
+            positions: List of (x, y, quality, distance) tuples (front-line relative)
             
         Returns:
-            (x, y, quality, distance) of closest object in FOV, or None
+            (x, y, quality, distance) of nearest point to front line, or None
         """
-        # Get sensor configuration
-        sensor_key = f'sensor_{sensor_id}'
-        if sensor_key not in self.config['sensor_positions']:
-            # Default to first detected object
-            return min(positions, key=lambda p: p[3]) if positions else None
+        if not positions:
+            return None
         
-        sensor_config = self.config['sensor_positions'][sensor_key]
-        sensor_x = sensor_config['x']
-        sensor_y = sensor_config['y']
-        sensor_angle = sensor_config['angle']  # degrees
-        fov = sensor_config['fov']  # field of view (degrees)
-        
-        candidates = []
-        for x, y, quality, distance in positions:
-            # Calculate angle from sensor to object
-            dx = x - sensor_x
-            dy = y - sensor_y
-            angle = np.degrees(np.arctan2(dy, dx))
-            
-            # Normalize angle difference
-            angle_diff = abs((angle - sensor_angle + 180) % 360 - 180)
-            
-            # Check if in sensor's FOV
-            if angle_diff <= fov / 2:
-                obj_distance = np.sqrt(dx**2 + dy**2)
-                candidates.append((x, y, quality, obj_distance))
-        
-        # Return closest object in FOV
-        if candidates:
-            closest = min(candidates, key=lambda c: c[3])
-            return closest
-        
-        return None
+        # Return point with minimum Y (nearest to front line)
+        nearest = min(positions, key=lambda p: p[1])  # p[1] is Y coordinate
+        return nearest
     
     def _print_progress(self):
         """Print collection progress statistics."""
