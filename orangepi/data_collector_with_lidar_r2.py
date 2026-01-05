@@ -180,10 +180,18 @@ class SynchronizedDataCollector:
         """Thread: Collect ultrasonic echo profile data with timestamps."""
         print("Starting ultrasonic data collection thread...")
         
+        debug_count = 0
+        max_debug = 10
+        
         while self.running:
             try:
                 if self.arduino.in_waiting:
                     line = self.arduino.readline().decode('utf-8').strip()
+                    
+                    # Debug: show first few lines
+                    if debug_count < max_debug:
+                        print(f"[DEBUG] Arduino: {line[:100] if len(line) > 100 else line}")
+                        debug_count += 1
                     
                     if line.startswith('S,'):
                         timestamp = time.time()
@@ -197,6 +205,17 @@ class SynchronizedDataCollector:
                                 'parts': parts
                             })
                             self.stats['ultrasonic_samples'] += 1
+                            
+                            if debug_count < max_debug:
+                                print(f"[DEBUG] Valid sample received: {len(parts)} parts")
+                        else:
+                            if debug_count < max_debug:
+                                print(f"[DEBUG] Invalid format: {len(parts)} parts (expected 243+)")
+                    else:
+                        if debug_count < max_debug and line:
+                            print(f"[DEBUG] Non-data line: '{line[:50]}'")
+                else:
+                    time.sleep(0.01)  # Small delay when no data
                             
             except Exception as e:
                 if self.running:
