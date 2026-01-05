@@ -10,9 +10,58 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import sys
 import time
+import glob
+import os
 
 # Default port for RPLidar (adjust if needed)
 PORT_NAME = '/dev/ttyUSB0'
+
+def find_lidar_port():
+    """Auto-detect RPLidar port, avoiding Arduino ports."""
+    # RPLidar typically uses ttyUSB* (CP210x chip)
+    # Arduino typically uses ttyACM* (native USB)
+    usb_ports = sorted(glob.glob('/dev/ttyUSB*'))
+    acm_ports = sorted(glob.glob('/dev/ttyACM*'))
+    
+    print("\n=== Port Detection ===")
+    if usb_ports:
+        print(f"USB ports found: {', '.join(usb_ports)}")
+    if acm_ports:
+        print(f"ACM ports found (likely Arduino): {', '.join(acm_ports)}")
+    
+    # Prefer ttyUSB* ports for RPLidar
+    if usb_ports:
+        port = usb_ports[0]
+        print(f"Selected RPLidar port: {port}")
+        
+        # Check accessibility
+        if not os.access(port, os.R_OK | os.W_OK):
+            print(f"\n✗ No read/write permission for {port}")
+            print("Fix with one of these:")
+            print(f"  sudo usermod -a -G dialout $USER  # Permanent (logout required)")
+            print(f"  sudo chmod 666 {port}             # Temporary")
+            return None
+        
+        print(f"✓ Port accessible")
+        print("=" * 60)
+        return port
+    
+    # If no ttyUSB* ports, warn about ttyACM*
+    if acm_ports:
+        print("\n⚠ Warning: Only ACM ports found (typically Arduino, not RPLidar)")
+        print("RPLidar A1M8 uses CP210x chip and appears as /dev/ttyUSB*")
+        print("\nIf you're sure it's the RPLidar, specify port manually:")
+        print(f"  python3 visualize.py {acm_ports[0]}")
+        return None
+    
+    print("\n✗ No USB serial ports found!")
+    print("\nTroubleshooting:")
+    print("1. Check USB cable connection")
+    print("2. Run: lsusb (should see CP210x or Silicon Labs)")
+    print("3. Run: dmesg | grep tty | tail")
+    print("=" * 60)
+    return None
+
 
 class LidarVisualizer:
     def __init__(self, port):
@@ -162,9 +211,11 @@ class LidarVisualizer:
             print(f"\n✗ Error: {e}")
             print("\nTroubleshooting tips:")
             print("1. Check RPLidar USB connection")
-            print("2. Verify port (default: /dev/ttyUSB0)")
-            print("3. Check permissions: sudo chmod 666 /dev/ttyUSB0")
-            print("4. Install dependencies: pip install rplidar matplotlib numpy")
+            print("2. Verify port: ls /dev/ttyUSB*")
+            print("3. Check it's not Arduino port (Arduino uses /dev/ttyACM0)")
+            print("4. Check permissions: sudo chmod 666 /dev/ttyUSB0")
+            print("5. Add to dialout group: sudo usermod -a -G dialout $USER")
+            print("6. Install dependencies: pip install rplidar matplotlib numpy")
         finally:
             if self.lidar:
                 print("\nStopping LiDAR...")
@@ -175,10 +226,27 @@ class LidarVisualizer:
 
 def main():
     """Main function"""
-    # Allow custom port via command line
-    port = PORT_NAME
+    port = None
+    
+    # Check for command line argument first
     if len(sys.argv) > 1:
         port = sys.argv[1]
+        print(f"Using specified port: {port}")
+        
+        # Verify it exists
+        if not os.path.exists(port):
+            print(f"\n✗ Error: Port {port} does not exist")
+            print(f"Available ports: {', '.join(glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*'))}")
+            sys.exit(1)
+    else:
+        # Auto-detect RPLidar port
+        port = find_lidar_port()
+        
+        if not port:
+            print("\n✗ Could not auto-detect RPLidar port")
+            print(f"\nTry specifying port manually:")
+            print(f"  python3 visualize.py /dev/ttyUSB0")
+            sys.exit(1)
     
     visualizer = LidarVisualizer(port)
     visualizer.run()

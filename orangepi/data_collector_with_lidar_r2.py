@@ -30,6 +30,8 @@ import threading
 import queue
 import sys
 import struct
+import glob
+import os
 
 
 class SynchronizedDataCollector:
@@ -107,7 +109,14 @@ class SynchronizedDataCollector:
         if len(descriptor) == 7:
             data_len = struct.unpack('<I', descriptor[2:6])[0] & 0x3FFFFFFF
             info_data = self.lidar_serial.read(data_len)
-            print("  ✓ LIDAR communication OK")
+            if len(info_data) >= 20:
+                model = info_data[0]
+                firmware_minor = info_data[1]
+                firmware_major = info_data[2]
+                hardware = info_data[3]
+                print(f"  ✓ LIDAR: Model={model}, Firmware={firmware_major}.{firmware_minor}, Hardware={hardware}")
+            else:
+                print("  ✓ LIDAR communication OK")
         else:
             raise Exception("Failed to communicate with LIDAR")
         
@@ -117,11 +126,11 @@ class SynchronizedDataCollector:
         time.sleep(0.5)
         self.lidar_serial.reset_input_buffer()
         
-        # Start motor using DTR
+        # Start motor using DTR (DTR=False makes motor spin on A1M8)
         print("  Starting motor...")
-        self.lidar_serial.setDTR(True)
+        self.lidar_serial.setDTR(False)  # False makes motor spin on RPLidar A1M8
         time.sleep(3)  # Wait for motor to stabilize
-        print("  ✓ Motor started")
+        print("  ✓ Motor ready")
         
         # Clear any startup data
         self.lidar_serial.reset_input_buffer()
@@ -132,9 +141,9 @@ class SynchronizedDataCollector:
         print("  Starting LIDAR scan...")
         self.lidar_serial.write(b'\xA5\x20')
         self.lidar_serial.flush()
-        time.sleep(0.2)
+        time.sleep(0.3)
         
-        # Read descriptor
+        # Read and verify descriptor
         descriptor = self.lidar_serial.read(7)
         if len(descriptor) != 7:
             raise Exception(f"Scan descriptor incomplete: {len(descriptor)} bytes")
@@ -148,7 +157,7 @@ class SynchronizedDataCollector:
         if response_len != 5:
             raise Exception(f"Unexpected scan response length: {response_len}")
         
-        print("  ✓ LIDAR scan started")
+        print("  ✓ LIDAR scan active!")
     
     def _stop_lidar(self):
         """Stop LIDAR and motor."""
@@ -536,6 +545,46 @@ class SynchronizedDataCollector:
         print("✓ Collection stopped")
 
 
+def verify_ports(config):
+    """Verify that configured ports exist and are accessible."""
+    print("\n=== Port Verification ===")
+    
+    # Check Arduino port
+    arduino_port = config['arduino']['port']
+    print(f"Arduino port: {arduino_port}")
+    if os.path.exists(arduino_port):
+        if os.access(arduino_port, os.R_OK | os.W_OK):
+            print("  ✓ Port exists and is accessible")
+        else:
+            print("  ✗ Port exists but no read/write permission")
+            print(f"  Fix: sudo usermod -a -G dialout $USER (then logout/login)")
+            print(f"  Or: sudo chmod 666 {arduino_port}")
+            return False
+    else:
+        print(f"  ✗ Port does not exist")
+        print(f"  Available ports: {', '.join(glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*'))}")
+        return False
+    
+    # Check LIDAR port
+    lidar_port = config['lidar']['port']
+    print(f"\nLiDAR port: {lidar_port}")
+    if os.path.exists(lidar_port):
+        if os.access(lidar_port, os.R_OK | os.W_OK):
+            print("  ✓ Port exists and is accessible")
+        else:
+            print("  ✗ Port exists but no read/write permission")
+            print(f"  Fix: sudo usermod -a -G dialout $USER (then logout/login)")
+            print(f"  Or: sudo chmod 666 {lidar_port}")
+            return False
+    else:
+        print(f"  ✗ Port does not exist")
+        print(f"  Available ports: {', '.join(glob.glob('/dev/ttyACM*') + glob.glob('/dev/ttyUSB*'))}")
+        return False
+    
+    print("=" * 60)
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Synchronized ultrasonic echo profiling + RPLIDAR positioning (Direct Control)'
@@ -544,10 +593,23 @@ def main():
                        help='Path to configuration file')
     parser.add_argument('-d', '--duration', type=int, default=60,
                        help='Collection duration in seconds (0 for infinite, default: 60)')
+    parser.add_argument('--skip-port-check', action='store_true',
+                       help='Skip port verification (not recommended)')
     
     args = parser.parse_args()
     
     try:
+        # Load config first
+        with open(args.config, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        # Verify ports unless skipped
+        if not args.skip_port_check:
+            if not verify_ports(config):
+                print("\n✗ Port verification failed. Fix port issues and try again.")
+                print("Or run with --skip-port-check to bypass this check.")
+                sys.exit(1)
+        
         collector = SynchronizedDataCollector(args.config)
         collector.start_collection(duration=args.duration)
     except KeyboardInterrupt:
@@ -555,6 +617,11 @@ def main():
         sys.exit(0)
     except Exception as e:
         print(f"\n✗ Error: {e}")
+        print("\nTroubleshooting tips:")
+        print("1. Check USB connections (Arduino and RPLidar)")
+        print("2. Verify ports: ls /dev/ttyUSB* /dev/ttyACM*")
+        print("3. Check permissions: ls -l /dev/ttyUSB0 /dev/ttyACM0")
+        print("4. Add to dialout group: sudo usermod -a -G dialout $USER")
         import traceback
         traceback.print_exc()
         sys.exit(1)
