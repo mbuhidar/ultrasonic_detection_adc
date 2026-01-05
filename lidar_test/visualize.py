@@ -91,6 +91,7 @@ class LidarVisualizer:
         self.distances = []
         self.frame_count = 0
         self.max_frames = 300 if SAVE_MODE else None  # Limit frames when saving
+        self.stopped = False  # Flag to prevent repeated processing after stop
         
     def setup_plot(self):
         """Setup the matplotlib polar plot"""
@@ -114,6 +115,10 @@ class LidarVisualizer:
     
     def update_plot(self, frame):
         """Update plot with new scan data"""
+        # Stop collecting data after reaching max frames
+        if self.stopped:
+            return self.scatter,
+        
         try:
             angles = []
             distances = []
@@ -153,11 +158,13 @@ class LidarVisualizer:
             
             # Stop after max frames in save mode
             if SAVE_MODE and self.max_frames and self.frame_count >= self.max_frames:
-                print(f"Reached {self.max_frames} frames, stopping...")
-                plt.close(self.fig)
+                if not self.stopped:
+                    print(f"\nCollected {self.max_frames} frames, finalizing...")
+                    self.stopped = True
             
         except Exception as e:
-            print(f"Error updating plot: {e}")
+            if not self.stopped:
+                print(f"Error updating plot: {e}")
         
         return self.scatter,
     
