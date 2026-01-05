@@ -49,6 +49,24 @@ class SynchronizedDataCollector:
             timeout=self.config['arduino']['timeout']
         )
         time.sleep(2)  # Wait for Arduino reset
+        
+        # Read and discard startup messages
+        time.sleep(0.5)
+        while self.arduino.in_waiting:
+            line = self.arduino.readline().decode('utf-8').strip()
+            print(f"  Arduino: {line}")
+        
+        # Send START command to begin data collection
+        print("Sending START command to Arduino...")
+        self.arduino.write(b"START:10\n")
+        self.arduino.flush()
+        time.sleep(0.5)
+        
+        # Read acknowledgment
+        if self.arduino.in_waiting:
+            ack = self.arduino.readline().decode('utf-8').strip()
+            print(f"  Arduino response: {ack}")
+        
         print(f"✓ Arduino connected on {self.config['arduino']['port']}")
         
         # Initialize RPLIDAR with direct serial control
@@ -538,6 +556,14 @@ class SynchronizedDataCollector:
         """Stop all collection threads and cleanup."""
         print("Stopping collection threads...")
         self.running = False
+        
+        # Send STOP command to Arduino
+        try:
+            self.arduino.write(b"STOP\n")
+            self.arduino.flush()
+            time.sleep(0.2)
+        except:
+            pass
         
         # Wait for threads to finish
         if self.ultrasonic_thread:
