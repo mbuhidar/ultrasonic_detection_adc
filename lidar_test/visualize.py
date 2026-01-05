@@ -228,7 +228,7 @@ class LidarVisualizer:
         time.sleep(0.5)
         
         # Get device info
-        print("Device info:")
+        print("Getting device info...")
         self.serial_port.write(b'\xA5\x50')
         time.sleep(0.2)
         descriptor = self.serial_port.read(7)
@@ -240,9 +240,10 @@ class LidarVisualizer:
                 firmware_minor = info_data[1]
                 firmware_major = info_data[2]
                 print(f"  Model: {model}")
-                print(f"  Firmware: {firmware_major}.{firmware_minor}\n")
+                print(f"  Firmware: {firmware_major}.{firmware_minor}")
         
         # Stop any previous scan
+        print("Sending STOP command...")
         self.serial_port.write(b'\xA5\x25')
         time.sleep(0.5)
         self.serial_port.reset_input_buffer()
@@ -251,21 +252,32 @@ class LidarVisualizer:
         print("Starting motor...")
         self.serial_port.setDTR(False)
         time.sleep(3)
-        print("✓ Motor ready\n")
+        print("✓ Motor ready")
         
+        # Clear buffers again before scan
         self.serial_port.reset_input_buffer()
-        time.sleep(0.2)
+        time.sleep(0.5)
     
     def _start_scan(self):
         """Start LIDAR scan"""
+        print("Sending SCAN command...")
         self.serial_port.write(b'\xA5\x20')
         self.serial_port.flush()
         time.sleep(0.3)
         
         # Read descriptor
         descriptor = self.serial_port.read(7)
-        if len(descriptor) != 7 or descriptor[0:2] != b'\xA5\x5A':
-            raise Exception("Failed to start scan")
+        
+        if len(descriptor) != 7:
+            print(f"Error: Expected 7 bytes, got {len(descriptor)}: {descriptor.hex() if descriptor else 'empty'}")
+            raise Exception(f"Scan descriptor incomplete: {len(descriptor)} bytes")
+        
+        if descriptor[0:2] != b'\xA5\x5A':
+            print(f"Error: Invalid header. Expected A55A, got {descriptor[0:2].hex()}")
+            print(f"Full descriptor: {descriptor.hex()}")
+            raise Exception(f"Invalid scan descriptor header")
+        
+        print("✓ Scan started successfully\n")
     
     def cleanup(self):
         """Cleanup resources"""
