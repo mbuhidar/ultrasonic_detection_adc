@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""
+Real-time RPLidar Visualization
+Displays LiDAR scan data in a 2D polar plot using matplotlib
+"""
+
+from rplidar import RPLidar
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+import sys
+import time
+
+# Default port for RPLidar (adjust if needed)
+PORT_NAME = '/dev/ttyUSB0'
+
+class LidarVisualizer:
+    def __init__(self, port):
+        self.port = port
+        self.lidar = None
+        self.fig = None
+        self.ax = None
+        self.scatter = None
+        self.angles = []
+        self.distances = []
+        self.iterator = None
+        
+    def setup_plot(self):
+        """Setup the matplotlib polar plot"""
+        self.fig = plt.figure(figsize=(10, 10))
+        self.ax = self.fig.add_subplot(111, projection='polar')
+        self.ax.set_ylim(0, 6000)  # Set max range to 6000mm (6 meters)
+        self.ax.set_title('RPLidar A1M8 - Real-time Scan Visualization', pad=20)
+        self.ax.grid(True)
+        
+        # Initialize empty scatter plot
+        self.scatter = self.ax.scatter([], [], s=2, c='blue', alpha=0.75)
+        
+        # Add range circles labels
+        self.ax.set_yticks([1000, 2000, 3000, 4000, 5000, 6000])
+        self.ax.set_yticklabels(['1m', '2m', '3m', '4m', '5m', '6m'])
+        
+    def init_animation(self):
+        """Initialize animation"""
+        self.scatter.set_offsets(np.empty((0, 2)))
+        return self.scatter,
+    
+    def update_plot(self, frame):
+        """Update plot with new scan data"""
+        import struct
+        
+        try:
+            # Collect measurements until we have a complete scan
+            for i in range(500):  # Read up to 500 points
+                data = self.lidar._serial_port.read(5)
+                
+                if len(data) != 5:
+                    break
+                
+                # Parse measurement
+                byte0 = data[0]
+                start_flag = (byte0 & 0x01) != 0
+                quality = (byte0 >> 2) & 0x3F
+                
+                angle_raw = struct.unpack('<H', data[1:3])[0]
+                angle = (angle_raw >> 1) / 64.0
+                
+                distance_raw = struct.unpack('<H', data[3:5])[0]
+                distance = distance_raw / 4.0
+                
+                # new_scan is True at start of each 360° rotation
+                if start_flag and len(self.angles) > 0:
+                    # We have a complete scan, update the plot
+                    break
+                
+                self.angles.append(np.radians(angle))
+                self.distances.append(distance)
+            
+            if len(self.angles) > 0:
+                # Update scatter plot
+                self.scatter.set_offsets(np.c_[self.angles, self.distances])
+                
+                # Update title with scan info
+                valid_dists = [d for d in self.distances if d > 0]
+                if valid_dists:
+                    self.ax.set_title(
+                        f'RPLidar A1M8 - Real-time Scan ({len(self.angles)} points)\n'
+                        f'Min: {min(valid_dists):.0f}mm | Max: {max(valid_dists):.0f}mm | '
+                        f'Avg: {np.mean(valid_dists):.0f}mm',
+                        pad=20
+                    )
+                
+                # Clear for next scan
+                self.angles = []
+                self.distances = []
+                
+        except Exception as e:
+            print(f"Error updating plot: {e}")
+        
+        return self.scatter,
+    
+    def run(self):
+        """Start visualization"""
+        try:
+            print(f"Connecting to RPLidar on {self.port}...")
+            self.lidar = RPLidar(self.port)
+            print("✓ Connected successfully!")
+            
+            # Get device info
+            info = self.lidar.get_info()
+            print(f"\nDevice: {info['model']}")
+            print(f"Firmware: {info['firmware'][0]}.{info['firmware'][1]}")
+            print("\nStarting visualization... (Close the window to stop)")
+            
+            # Initialize motor
+            print("Starting motor...")
+            try:
+                self.lidar.stop()
+            except:
+                pass
+            
+            # Motor control: DTR=False makes motor spin on this device
+            self.lidar._serial_port.setDTR(False)
+            time.sleep(3)  # Wait for motor stabilization
+            
+            self.lidar._serial_port.reset_input_buffer()
+            time.sleep(0.5)
+            print("Motor ready!")
+            
+            # Send SCAN command directly
+            print("Starting scan...")
+            self.lidar._serial_port.write(b'\xA5\x20')
+            self.lidar._serial_port.flush()
+            time.sleep(0.3)
+            
+            # Read and verify descriptor
+            descriptor = self.lidar._serial_port.read(7)
+            if len(descriptor) != 7 or descriptor[0:2] != b'\xA5\x5A':
+                print("Error: Invalid scan descriptor")
+                return
+            
+            print("Scan active!")
+            
+            # Setup plot
+            self.setup_plot()
+            
+            # Create animation
+            ani = animation.FuncAnimation(
+                self.fig,
+                self.update_plot,
+                init_func=self.init_animation,
+                interval=50,  # Update every 50ms
+                blit=True,
+                cache_frame_data=False
+            )
+            
+            plt.show()
+            
+        except KeyboardInterrupt:
+            print("\nVisualization interrupted by user")
+        except Exception as e:
+            print(f"\n✗ Error: {e}")
+            print("\nTroubleshooting tips:")
+            print("1. Check RPLidar USB connection")
+            print("2. Verify port (default: /dev/ttyUSB0)")
+            print("3. Check permissions: sudo chmod 666 /dev/ttyUSB0")
+            print("4. Install dependencies: pip install rplidar matplotlib numpy")
+        finally:
+            if self.lidar:
+                print("\nStopping LiDAR...")
+                self.lidar.stop()
+                self.lidar.stop_motor()
+                self.lidar.disconnect()
+                print("✓ Disconnected")
+
+def main():
+    """Main function"""
+    # Allow custom port via command line
+    port = PORT_NAME
+    if len(sys.argv) > 1:
+        port = sys.argv[1]
+    
+    visualizer = LidarVisualizer(port)
+    visualizer.run()
+
+if __name__ == "__main__":
+    main()
