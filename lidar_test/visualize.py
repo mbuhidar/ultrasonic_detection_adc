@@ -97,6 +97,10 @@ class LidarVisualizer:
         self.ax.set_title('RPLidar A1M8 - Real-time Scan Visualization', pad=20)
         self.ax.grid(True)
         
+        # Set 0 degrees to top (forward) and rotate clockwise
+        self.ax.set_theta_zero_location('N')  # 0° at top (North)
+        self.ax.set_theta_direction(-1)  # Clockwise rotation
+        
         # Initialize empty scatter plot
         self.scatter = self.ax.scatter([], [], s=2, c='blue', alpha=0.75)
         
