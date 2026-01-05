@@ -4,7 +4,8 @@ Real-time RPLidar Visualization
 Displays LiDAR scan data in a 2D polar plot using matplotlib
 """
 
-from rplidar import RPLidar
+import serial
+import struct
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -66,7 +67,7 @@ def find_lidar_port():
 class LidarVisualizer:
     def __init__(self, port):
         self.port = port
-        self.lidar = None
+        self.serial_port = None
         self.fig = None
         self.ax = None
         self.scatter = None
@@ -96,12 +97,10 @@ class LidarVisualizer:
     
     def update_plot(self, frame):
         """Update plot with new scan data"""
-        import struct
-        
         try:
             # Collect measurements until we have a complete scan
             for i in range(500):  # Read up to 500 points
-                data = self.lidar._serial_port.read(5)
+                data = self.serial_port.read(5)
                 
                 if len(data) != 5:
                     break
@@ -152,43 +151,65 @@ class LidarVisualizer:
         """Start visualization"""
         try:
             print(f"Connecting to RPLidar on {self.port}...")
-            self.lidar = RPLidar(self.port)
+            self.serial_port = serial.Serial(
+                self.port,
+                115200,  # RPLidar A1M8 standard baudrate
+                timeout=1,
+                dsrdtr=True
+            )
+            time.sleep(0.5)
             print("✓ Connected successfully!")
             
             # Get device info
-            info = self.lidar.get_info()
-            print(f"\nDevice: {info['model']}")
-            print(f"Firmware: {info['firmware'][0]}.{info['firmware'][1]}")
+            print("\nGetting device info...")
+            self.serial_port.reset_input_buffer()
+            self.serial_port.reset_output_buffer()
+            time.sleep(0.2)
+            
+            self.serial_port.write(b'\xA5\x50')  # GET_INFO command
+            time.sleep(0.2)
+            descriptor = self.serial_port.read(7)
+            if len(descriptor) == 7:
+                data_len = struct.unpack('<I', descriptor[2:6])[0] & 0x3FFFFFFF
+                info_data = self.serial_port.read(data_len)
+                if len(info_data) >= 4:
+                    model = info_data[0]
+                    firmware_minor = info_data[1]
+                    firmware_major = info_data[2]
+                    hardware = info_data[3]
+                    print(f"\nDevice: Model={model}, Firmware={firmware_major}.{firmware_minor}, Hardware={hardware}")
+            
             print("\nStarting visualization... (Close the window to stop)")
             
-            # Initialize motor
-            print("Starting motor...")
-            try:
-                self.lidar.stop()
-            except:
-                pass
-            
-            # Motor control: DTR=False makes motor spin on this device
-            self.lidar._serial_port.setDTR(False)
-            time.sleep(3)  # Wait for motor stabilization
-            
-            self.lidar._serial_port.reset_input_buffer()
+            # Stop any previous operations
+            print("Sending STOP command...")
+            self.serial_port.write(b'\xA5\x25')
             time.sleep(0.5)
-            print("Motor ready!")
+            self.serial_port.reset_input_buffer()
             
-            # Send SCAN command directly
+            # Start motor (DTR=False makes motor spin on A1M8)
+            print("Starting motor...")
+            self.serial_port.setDTR(False)
+            time.sleep(3)  # Wait for motor stabilization
+            print("✓ Motor ready!")
+            
+            # Clear buffers
+            self.serial_port.reset_input_buffer()
+            time.sleep(0.5)
+            
+            # Send SCAN command
             print("Starting scan...")
-            self.lidar._serial_port.write(b'\xA5\x20')
-            self.lidar._serial_port.flush()
+            self.serial_port.write(b'\xA5\x20')
+            self.serial_port.flush()
             time.sleep(0.3)
             
             # Read and verify descriptor
-            descriptor = self.lidar._serial_port.read(7)
+            descriptor = self.serial_port.read(7)
             if len(descriptor) != 7 or descriptor[0:2] != b'\xA5\x5A':
                 print("Error: Invalid scan descriptor")
                 return
             
-            print("Scan active!")
+            print("✓ Scan active!\n")
             
             # Setup plot
             self.setup_plot()
@@ -215,14 +236,26 @@ class LidarVisualizer:
             print("3. Check it's not Arduino port (Arduino uses /dev/ttyACM0)")
             print("4. Check permissions: sudo chmod 666 /dev/ttyUSB0")
             print("5. Add to dialout group: sudo usermod -a -G dialout $USER")
-            print("6. Install dependencies: pip install rplidar matplotlib numpy")
+            print("6. Install dependencies: pip install matplotlib numpy")
+            import traceback
+            traceback.print_exc()
         finally:
-            if self.lidar:
+            if self.serial_port:
                 print("\nStopping LiDAR...")
-                self.lidar.stop()
-                self.lidar.stop_motor()
-                self.lidar.disconnect()
-                print("✓ Disconnected")
+                try:
+                    # Stop scan
+                    self.serial_port.write(b'\xA5\x25')
+                    time.sleep(0.2)
+                    
+                    # Stop motor
+                    self.serial_port.setDTR(False)
+                    self.serial_port.setRTS(False)
+                    time.sleep(0.2)
+                    
+                    self.serial_port.close()
+                    print("✓ Disconnected")
+                except Exception as e:
+                    print(f"Error during cleanup: {e}")
 
 def main():
     """Main function"""
