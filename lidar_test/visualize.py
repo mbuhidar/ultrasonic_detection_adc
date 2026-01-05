@@ -87,11 +87,7 @@ class LidarVisualizer:
         self.fig = None
         self.ax = None
         self.scatter = None
-        self.angles = []
-        self.distances = []
-        self.frame_count = 0
         self.max_frames = 300 if SAVE_MODE else None  # Limit frames when saving
-        self.stopped = False  # Flag to prevent repeated processing after stop
         
     def setup_plot(self):
         """Setup the matplotlib polar plot"""
@@ -115,10 +111,6 @@ class LidarVisualizer:
     
     def update_plot(self, frame):
         """Update plot with new scan data"""
-        # Stop collecting data after reaching max frames
-        if self.stopped:
-            return self.scatter,
-        
         try:
             angles = []
             distances = []
@@ -154,17 +146,12 @@ class LidarVisualizer:
                 offsets = np.column_stack([angles, distances])
                 self.scatter.set_offsets(offsets)
             
-            self.frame_count += 1
-            
-            # Stop after max frames in save mode
-            if SAVE_MODE and self.max_frames and self.frame_count >= self.max_frames:
-                if not self.stopped:
-                    print(f"\nCollected {self.max_frames} frames, finalizing...")
-                    self.stopped = True
+            # Progress indicator
+            if SAVE_MODE and frame % 50 == 0:
+                print(f"Collected {frame} frames...")
             
         except Exception as e:
-            if not self.stopped:
-                print(f"Error updating plot: {e}")
+            print(f"Error updating plot: {e}")
         
         return self.scatter,
     
@@ -191,25 +178,31 @@ class LidarVisualizer:
             self.setup_plot()
             
             if SAVE_MODE:
-                print(f"Starting visualization in SAVE mode... (collecting {self.max_frames} frames)")
-                print("Output will be saved to: lidar_scan.gif")
+                print(f"Starting visualization in SAVE mode...")
+                print(f"Collecting {self.max_frames} frames (~{self.max_frames//20} seconds)")
+                print("Output: lidar_scan.gif")
             else:
                 print("Starting visualization... (Close the window to stop)")
             
             # Create animation
+            # In save mode, specify exact number of frames
+            # In interactive mode, run indefinitely
             ani = animation.FuncAnimation(
                 self.fig,
                 self.update_plot,
                 init_func=self.init_animation,
+                frames=self.max_frames if SAVE_MODE else None,  # Limit frames in save mode
                 interval=50,  # 50ms = ~20 FPS
                 blit=True,
-                cache_frame_data=False
+                cache_frame_data=False,
+                repeat=False  # Don't repeat animation
             )
             
             if SAVE_MODE:
                 # Save to file
+                print("\nSaving animation (this may take a minute)...")
                 ani.save('lidar_scan.gif', writer='pillow', fps=20)
-                print(f"\n✓ Animation saved to: lidar_scan.gif ({self.frame_count} frames)")
+                print(f"✓ Animation saved to: lidar_scan.gif ({self.max_frames} frames)")
             else:
                 # Show interactive plot
                 plt.show()
