@@ -227,8 +227,8 @@ class LidarVisualizer:
         self.serial_port.reset_output_buffer()
         time.sleep(0.5)
         
-        # Get device info
-        print("Getting device info...")
+        # Test communication with GET_INFO
+        print("Testing LIDAR communication...")
         self.serial_port.write(b'\xA5\x50')
         time.sleep(0.2)
         descriptor = self.serial_port.read(7)
@@ -239,45 +239,51 @@ class LidarVisualizer:
                 model = info_data[0]
                 firmware_minor = info_data[1]
                 firmware_major = info_data[2]
-                print(f"  Model: {model}")
-                print(f"  Firmware: {firmware_major}.{firmware_minor}")
+                hardware = info_data[3]
+                print(f"✓ LIDAR: Model={model}, Firmware={firmware_major}.{firmware_minor}, Hardware={hardware}")
+            else:
+                print("✓ LIDAR communication OK")
+        else:
+            raise Exception("Failed to communicate with LIDAR")
         
-        # Stop any previous scan
+        # Send STOP to ensure clean state
         print("Sending STOP command...")
         self.serial_port.write(b'\xA5\x25')
         time.sleep(0.5)
         self.serial_port.reset_input_buffer()
         
-        # Start motor (DTR=False for A1M8)
+        # Start motor using DTR (DTR=False makes motor spin on A1M8)
         print("Starting motor...")
-        self.serial_port.setDTR(False)
-        time.sleep(3)
+        self.serial_port.setDTR(False)  # False makes motor spin on RPLidar A1M8
+        time.sleep(3)  # Wait for motor to stabilize
         print("✓ Motor ready")
         
-        # Clear buffers again before scan
+        # Clear any startup data
         self.serial_port.reset_input_buffer()
-        time.sleep(0.5)
+        time.sleep(0.2)
     
     def _start_scan(self):
         """Start LIDAR scan"""
-        print("Sending SCAN command...")
+        print("Starting LIDAR scan...")
         self.serial_port.write(b'\xA5\x20')
         self.serial_port.flush()
         time.sleep(0.3)
         
-        # Read descriptor
+        # Read and verify descriptor
         descriptor = self.serial_port.read(7)
-        
         if len(descriptor) != 7:
-            print(f"Error: Expected 7 bytes, got {len(descriptor)}: {descriptor.hex() if descriptor else 'empty'}")
             raise Exception(f"Scan descriptor incomplete: {len(descriptor)} bytes")
         
         if descriptor[0:2] != b'\xA5\x5A':
-            print(f"Error: Invalid header. Expected A55A, got {descriptor[0:2].hex()}")
-            print(f"Full descriptor: {descriptor.hex()}")
-            raise Exception(f"Invalid scan descriptor header")
+            raise Exception(f"Invalid scan descriptor: {descriptor.hex()}")
         
-        print("✓ Scan started successfully\n")
+        length_val = struct.unpack('<I', descriptor[2:6])[0]
+        response_len = length_val & 0x3FFFFFFF
+        
+        if response_len != 5:
+            raise Exception(f"Unexpected scan response length: {response_len}")
+        
+        print("✓ LIDAR scan active!\n")
     
     def cleanup(self):
         """Cleanup resources"""
