@@ -443,23 +443,40 @@ class SynchronizedDataCollector:
     
     def _find_relevant_object(self, sensor_id, positions):
         """
-        Find the nearest LIDAR point to the front line (minimum Y value).
+        Find the nearest LIDAR point directly in front of the box between the sensors.
         
-        Since positions are already filtered to objects in front and coordinates
-        are relative to the front line, we simply find the point with minimum Y.
+        Filters to only include objects in the region between the two sensor positions
+        (X range from left sensor to right sensor), then returns the nearest point.
         
         Args:
-            sensor_id: Sensor ID (1, 2, ...) - not used in this simplified version
+            sensor_id: Sensor ID (1, 2, ...) - not used in this version
             positions: List of (x, y, quality, distance) tuples (front-line relative)
             
         Returns:
-            (x, y, quality, distance) of nearest point to front line, or None
+            (x, y, quality, distance) of nearest point in front region, or None
         """
         if not positions:
             return None
         
+        # Get sensor X positions from config to define the detection region
+        sensor_1_x = self.config['sensor_positions']['sensor_1']['x']  # -37.47 cm (left)
+        sensor_2_x = self.config['sensor_positions']['sensor_2']['x']  # +37.47 cm (right)
+        
+        # Ensure left < right
+        x_min = min(sensor_1_x, sensor_2_x)
+        x_max = max(sensor_1_x, sensor_2_x)
+        
+        # Filter to only positions directly in front (between the sensors)
+        front_positions = [
+            pos for pos in positions
+            if x_min <= pos[0] <= x_max  # X is within sensor span
+        ]
+        
+        if not front_positions:
+            return None
+        
         # Return point with minimum Y (nearest to front line)
-        nearest = min(positions, key=lambda p: p[1])  # p[1] is Y coordinate
+        nearest = min(front_positions, key=lambda p: p[1])
         return nearest
     
     def _print_progress(self):
