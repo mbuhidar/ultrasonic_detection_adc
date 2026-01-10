@@ -12,6 +12,7 @@ build/
 data/*.csv
 data/*.json
 !data/.gitkeep
+reference/
 *.log
 .DS_Store
 .vscode/
