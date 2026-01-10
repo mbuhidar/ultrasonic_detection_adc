@@ -1,0 +1,277 @@
+# -*- coding: utf-8 -*-
+"""
+FreeCAD Macro: Sensor Bracket and Post for Maxbotix MB1300AE Ultrasonic Sensor
+
+This macro generates the sensor mounting plate with standoffs and support post:
+- Sensor mounting plate with 2 mounting holes and standoff bosses
+- Standoffs provide clearance for components on back of sensor board
+- Support post for mounting to wall plate or other structure
+
+Sensor Specifications (MB1300 series):
+- PCB dimensions: ~22.1mm x 25.11mm
+- Mounting holes: 2.54mm from edges (diagonal pattern)
+- Component clearance needed: ~6-8mm
+
+Usage:
+1. Open FreeCAD
+2. Run this macro: Macro -> Macros... -> Execute
+3. Adjust parameters below as needed
+"""
+
+import FreeCAD as App
+import Part
+import math
+
+# Create new document
+doc = App.newDocument("MB1300_Sensor_Bracket_Right")
+
+# =============================================
+# PARAMETERS - Adjust these as needed
+# =============================================
+
+# --- Sensor PCB Dimensions ---
+PCB_WIDTH = 22.1        # mm (X dimension)
+PCB_HEIGHT = 25.11      # mm (Y dimension)
+PCB_HOLE_OFFSET = 2.54  # mm from PCB edges
+
+# --- Bracket Material ---
+PLATE_THICKNESS = 3.0   # mm (thickness of bracket material)
+BRACKET_FILLET = 2.0    # mm (fillet radius for rounded corners)
+
+# --- Sensor Mounting Plate ---
+SENSOR_PLATE_WIDTH = PCB_WIDTH + 10.0   # mm (extra margin around PCB)
+SENSOR_PLATE_HEIGHT = PCB_HEIGHT + 10.0 # mm
+SENSOR_HOLE_DIAMETER = 3.2              # mm (for M3 screws)
+
+# --- Standoff Bosses ---
+STANDOFF_HEIGHT = 11.0      # mm (clearance for components on back)
+STANDOFF_DIAMETER = 6.0    # mm (outer diameter)
+STANDOFF_BORE_DIAMETER = 3.2  # mm (for M3 screws)
+
+# --- Support Post (Boss) ---
+POST_OUTER_DIAMETER = 14.5  # mm
+POST_INNER_DIAMETER = 10.0  # mm (bore hole)
+POST_HEIGHT = 14.0          # mm (length of support post)
+
+# --- Bracket Angle ---
+BRACKET_ANGLE = 60.0  # degrees (angle away from wall plate)
+BRACKET_YAW = -30.0    # degrees (rotation to the side, about Z-axis)
+
+# =============================================
+# HELPER FUNCTIONS
+# =============================================
+
+def create_rounded_rectangle(width, height, thickness, fillet_radius=0):
+    """Create a rounded rectangle plate"""
+    # Create base rectangle
+    rect = Part.makeBox(width, height, thickness)
+    rect.translate(App.Vector(-width/2, -height/2, 0))
+    
+    # Apply fillet to vertical edges if requested
+    if fillet_radius > 0 and fillet_radius < min(width, height) / 2:
+        try:
+            edges_to_fillet = []
+            for edge in rect.Edges:
+                # Select only the vertical edges (parallel to Z-axis)
+                if abs(edge.tangentAt(0).z) > 0.9:
+                    edges_to_fillet.append(edge)
+            
+            if edges_to_fillet:
+                rect = rect.makeFillet(fillet_radius, edges_to_fillet)
+        except:
+            print("Warning: Fillet operation failed, using sharp corners")
+    
+    return rect
+
+def create_cylinder_at_position(diameter, height, position):
+    """Create a cylinder at specified position"""
+    cyl = Part.makeCylinder(diameter/2, height)
+    cyl.translate(position)
+    return cyl
+
+def create_mounting_holes(plate, hole_positions, hole_diameter, thickness):
+    """Subtract mounting holes from a plate"""
+    result = plate
+    for pos in hole_positions:
+        hole = Part.makeCylinder(hole_diameter/2, thickness * 1.1)
+        hole.translate(App.Vector(pos[0], pos[1], -thickness * 0.05))
+        result = result.cut(hole)
+    return result
+
+# =============================================
+# BUILD SENSOR MOUNTING PLATE
+# =============================================
+
+print("Creating sensor mounting plate...")
+
+# Create sensor plate
+sensor_plate = create_rounded_rectangle(
+    SENSOR_PLATE_WIDTH,
+    SENSOR_PLATE_HEIGHT,
+    PLATE_THICKNESS,
+    BRACKET_FILLET
+)
+
+# Define sensor mounting hole positions (diagonal pattern matching MB1300)
+sensor_hole_positions = [
+    (-PCB_WIDTH/2 + PCB_HOLE_OFFSET, -PCB_HEIGHT/2 + PCB_HOLE_OFFSET),
+    (PCB_WIDTH/2 - PCB_HOLE_OFFSET, PCB_HEIGHT/2 - PCB_HOLE_OFFSET)
+]
+
+# Add sensor mounting holes
+sensor_plate = create_mounting_holes(sensor_plate, sensor_hole_positions, SENSOR_HOLE_DIAMETER, PLATE_THICKNESS)
+
+# =============================================
+# POSITION AND ROTATE SENSOR PLATE
+# =============================================
+
+print("Positioning sensor plate...")
+
+# Apply rotation to sensor plate relative to its position
+rotation_pitch = App.Rotation(App.Vector(1, 0, 0), BRACKET_ANGLE)
+rotation_yaw = App.Rotation(App.Vector(0, 0, 1), BRACKET_YAW)
+rotation = rotation_yaw.multiply(rotation_pitch)
+
+# Position sensor plate at the top of the post with rotation
+offset = App.Vector(0, 0, POST_HEIGHT)
+
+# Apply rotation and translation
+sensor_plate.Placement = App.Placement(offset, rotation)
+
+# =============================================
+# CREATE SUPPORT POST
+# =============================================
+
+print("Creating support post...")
+
+# Create a vertical cylindrical boss extending well beyond the sensor plate
+# We'll trim it using the sensor plate as a cutting guide
+boss_total_height = POST_HEIGHT + PLATE_THICKNESS + 10.0  # Extra length for trimming
+
+# Outer cylinder
+post = Part.makeCylinder(POST_OUTER_DIAMETER/2, boss_total_height)
+
+# Inner bore hole
+bore = Part.makeCylinder(POST_INNER_DIAMETER/2, boss_total_height * 1.1)
+bore.translate(App.Vector(0, 0, -boss_total_height * 0.05))
+post = post.cut(bore)
+
+# Create alignment mark on boss (aligned with z-axis)
+print("Creating alignment mark on boss...")
+mark_width = 1.0  # mm
+mark_depth = 1.0  # mm
+mark_length = boss_total_height + 1.0  # Extend full length of boss
+alignment_mark = Part.makeBox(mark_width, mark_depth, mark_length)
+# Position on the +Y side of boss (aligned with z-axis)
+alignment_mark.translate(App.Vector(-mark_width/2, POST_OUTER_DIAMETER/2 - mark_depth, -0.5))
+post = post.cut(alignment_mark)
+print(f"Alignment mark created: {mark_width}mm wide x {mark_depth}mm deep")
+
+# Position post at origin
+post.translate(App.Vector(0, 0, 0))
+
+print(f"Post: OD={POST_OUTER_DIAMETER}mm, ID={POST_INNER_DIAMETER}mm, Height={boss_total_height}mm")
+
+# =============================================
+# COMBINE BRACKET PARTS
+# =============================================
+
+print("Combining sensor bracket and post...")
+
+# Fuse sensor plate and support post
+bracket = sensor_plate.fuse(post)
+
+# Rotate entire bracket 90 degrees around X-axis to align boss with Y-axis
+# This makes the vertical post (Z-axis) become horizontal along Y-axis
+print("Aligning boss with Y-axis...")
+align_rotation = App.Rotation(App.Vector(1, 0, 0), 90)
+bracket.Placement = App.Placement(App.Vector(0, 0, 0), align_rotation)
+
+# Apply fillet to the joint between sensor plate and post for strength
+try:
+    edges_to_fillet = []
+    for edge in bracket.Edges:
+        # Look for edges near the joint at z = POST_HEIGHT
+        try:
+            midpoint = edge.CenterOfMass
+            # Check if edge is near the joint area
+            if (abs(midpoint.z - POST_HEIGHT) < 3 and 
+                edge.Length > 3 and edge.Length < POST_OUTER_DIAMETER * 4):
+                edges_to_fillet.append(edge)
+        except:
+            pass
+    
+    if edges_to_fillet:
+        bracket = bracket.makeFillet(min(BRACKET_FILLET, PLATE_THICKNESS * 0.8), edges_to_fillet)
+        print(f"Applied fillet to {len(edges_to_fillet)} joint edges")
+except Exception as e:
+    print(f"Joint fillet failed: {e}")
+
+# Cut volumes in all four quadrants of the sensor mounting face
+print("Creating cutting volumes in four quadrants...")
+cut_size = 1000
+quadrant_offset = cut_size / 2
+
+# Combine rotations: first sensor plate rotation, then 90-degree alignment
+combined_rotation = align_rotation.multiply(rotation)
+
+# Define quadrant offsets in local coordinates
+quadrants = [
+    (quadrant_offset, quadrant_offset),   # Quadrant 1: +X, +Y
+    (-quadrant_offset, quadrant_offset),  # Quadrant 2: -X, +Y
+    (-quadrant_offset, -quadrant_offset), # Quadrant 3: -X, -Y
+    (quadrant_offset, -quadrant_offset)   # Quadrant 4: +X, -Y
+]
+
+for i, (x_off, y_off) in enumerate(quadrants, 1):
+    # Create box centered at origin
+    cutting_volume = Part.makeBox(cut_size, cut_size, cut_size)
+    cutting_volume.translate(App.Vector(-cut_size/2, -cut_size/2, -cut_size/2))
+    
+    # Calculate position in sensor plate local coords (at mounting surface with quadrant offset)
+    local_origin = App.Vector(x_off, y_off, PLATE_THICKNESS)
+    
+    # Transform to world coordinates before 90-degree rotation
+    world_origin = offset.add(rotation.multVec(local_origin))
+    
+    # Apply 90-degree rotation to get final position
+    final_origin = align_rotation.multVec(world_origin)
+    
+    # Apply final transformation
+    cutting_volume.Placement = App.Placement(final_origin, combined_rotation)
+    
+    # Perform the cut
+    bracket = bracket.cut(cutting_volume)
+    print(f"Quadrant {i} cut applied at offset ({x_off}, {y_off})")
+
+print("All quadrant cuts applied")
+
+# =============================================
+# FINALIZE AND DISPLAY
+# =============================================
+
+print("Finalizing sensor bracket...")
+
+# Create the Part object in FreeCAD
+Part.show(bracket)
+doc.recompute()
+
+# Print summary
+print("\n" + "="*50)
+print("MB1300 SENSOR BRACKET GENERATED SUCCESSFULLY")
+print("="*50)
+print(f"Sensor Plate: {SENSOR_PLATE_WIDTH}mm x {SENSOR_PLATE_HEIGHT}mm")
+print(f"Plate Thickness: {PLATE_THICKNESS}mm")
+print(f"Sensor Holes: {len(sensor_hole_positions)} x {SENSOR_HOLE_DIAMETER}mm diameter")
+print(f"Support Post: OD={POST_OUTER_DIAMETER}mm, ID={POST_INNER_DIAMETER}mm, Height={POST_HEIGHT}mm")
+print(f"Bracket Angle: {BRACKET_ANGLE}° pitch, {BRACKET_YAW}° yaw")
+print("\nTo export for 3D printing:")
+print("1. Select the object")
+print("2. File -> Export -> Choose STL or 3MF format")
+print("3. Save with desired filename")
+print("="*50)
+
+# Fit view to show the entire bracket
+import FreeCADGui
+FreeCADGui.SendMsgToActiveView("ViewFit")
+FreeCADGui.activeDocument().activeView().viewIsometric()

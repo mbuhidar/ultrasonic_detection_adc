@@ -1,0 +1,188 @@
+# -*- coding: utf-8 -*-
+"""
+FreeCAD Macro: Wall Mounting Plate for Maxbotix MB1300AE Ultrasonic Sensor Bracket
+
+This macro generates just the wall mounting plate component with:
+- 4 mounting holes for wall attachment
+- Rounded corners for a clean finish
+- Standard dimensions to match the complete bracket
+
+This can be used as a standalone component or as part of a larger bracket assembly.
+
+Usage:
+1. Open FreeCAD
+2. Run this macro: Macro -> Macros... -> Execute
+3. Adjust parameters below as needed
+"""
+
+import FreeCAD as App
+import Part
+
+# Create new document
+doc = App.newDocument("MB1300_Wall_Plate")
+
+# =============================================
+# PARAMETERS - Adjust these as needed
+# =============================================
+
+# --- Bracket Material ---
+PLATE_THICKNESS = 3.0   # mm (thickness of bracket material)
+BRACKET_FILLET = 2.0    # mm (fillet radius for rounded corners)
+
+# --- Wall Mounting Plate ---
+WALL_PLATE_WIDTH = 40.0    # mm (sized for 10mm edge distance)
+WALL_PLATE_HEIGHT = 60.0   # mm
+WALL_HOLE_DIAMETER = 5.0   # mm (for #8 or M5 screws)
+WALL_HOLE_OFFSET_X = 10.0  # mm from edge
+WALL_HOLE_OFFSET_Y_BOTTOM = 12.0  # mm from bottom edge
+WALL_HOLE_OFFSET_Y_TOP = 20.0     # mm from top edge
+
+# --- Boss Parameters ---
+BOSS_HEIGHT = 12.7         # mm (0.5 inches)
+BOSS_OUTER_DIAMETER = 14.5 # mm
+BOSS_INNER_DIAMETER = 10.0 # mm (bore hole)
+
+# =============================================
+# HELPER FUNCTIONS
+# =============================================
+
+def create_rounded_rectangle(width, height, thickness, fillet_radius=0):
+    """Create a rounded rectangle plate"""
+    # Create base rectangle
+    rect = Part.makeBox(width, height, thickness)
+    rect.translate(App.Vector(-width/2, -height/2, 0))
+    
+    # Apply fillet to vertical edges if requested
+    if fillet_radius > 0 and fillet_radius < min(width, height) / 2:
+        try:
+            edges_to_fillet = []
+            for edge in rect.Edges:
+                # Select only the vertical edges (parallel to Z-axis)
+                if abs(edge.tangentAt(0).z) > 0.9:
+                    edges_to_fillet.append(edge)
+            
+            if edges_to_fillet:
+                rect = rect.makeFillet(fillet_radius, edges_to_fillet)
+        except:
+            print("Warning: Fillet operation failed, using sharp corners")
+    
+    return rect
+
+def create_mounting_holes(plate, hole_positions, hole_diameter, thickness):
+    """Subtract mounting holes from a plate"""
+    result = plate
+    for pos in hole_positions:
+        hole = Part.makeCylinder(hole_diameter/2, thickness * 1.1)
+        hole.translate(App.Vector(pos[0], pos[1], -thickness * 0.05))
+        result = result.cut(hole)
+    return result
+
+# =============================================
+# BUILD WALL MOUNTING PLATE
+# =============================================
+
+print("Creating wall mounting plate...")
+
+# Create wall plate
+wall_plate = create_rounded_rectangle(
+    WALL_PLATE_WIDTH, 
+    WALL_PLATE_HEIGHT, 
+    PLATE_THICKNESS,
+    BRACKET_FILLET
+)
+
+# Define wall mounting hole positions (4 corners with different Y offsets)
+wall_hole_positions = [
+    (-WALL_PLATE_WIDTH/2 + WALL_HOLE_OFFSET_X, -WALL_PLATE_HEIGHT/2 + WALL_HOLE_OFFSET_Y_BOTTOM),  # Bottom left
+    (WALL_PLATE_WIDTH/2 - WALL_HOLE_OFFSET_X, -WALL_PLATE_HEIGHT/2 + WALL_HOLE_OFFSET_Y_BOTTOM),   # Bottom right
+    (-WALL_PLATE_WIDTH/2 + WALL_HOLE_OFFSET_X, WALL_PLATE_HEIGHT/2 - WALL_HOLE_OFFSET_Y_TOP),      # Top left
+    (WALL_PLATE_WIDTH/2 - WALL_HOLE_OFFSET_X, WALL_PLATE_HEIGHT/2 - WALL_HOLE_OFFSET_Y_TOP)        # Top right
+]
+
+# Add mounting holes to wall plate
+wall_plate = create_mounting_holes(wall_plate, wall_hole_positions, WALL_HOLE_DIAMETER, PLATE_THICKNESS)
+
+# =============================================
+# ADD BOSS
+# =============================================
+
+print("Creating boss...")
+
+# Create boss at top center of wall plate, offset inward by half the outer diameter
+boss_position = App.Vector(0, WALL_PLATE_HEIGHT/2 - BOSS_OUTER_DIAMETER/2, PLATE_THICKNESS)
+
+# Create outer cylinder (boss body)
+boss = Part.makeCylinder(BOSS_OUTER_DIAMETER/2, BOSS_HEIGHT)
+boss.translate(boss_position)
+
+# Create bore hole through boss
+bore = Part.makeCylinder(BOSS_INNER_DIAMETER/2, BOSS_HEIGHT * 1.1)
+bore.translate(App.Vector(0, WALL_PLATE_HEIGHT/2 - BOSS_OUTER_DIAMETER/2, PLATE_THICKNESS - 0.1))
+boss = boss.cut(bore)
+
+# Create alignment mark on boss (rotated 90° CCW from original position)
+print("Creating alignment mark on boss...")
+mark_width = 2.0  # mm
+mark_depth = 1.0  # mm
+mark_length = BOSS_HEIGHT + 1.0  # Extend full length of boss
+alignment_mark = Part.makeBox(mark_depth, mark_width, mark_length)
+# Position on the +Y side of boss (rotated 90° CCW)
+boss_center_y = WALL_PLATE_HEIGHT/2 - BOSS_OUTER_DIAMETER/2
+alignment_mark.translate(App.Vector(-mark_depth/2, boss_center_y + BOSS_OUTER_DIAMETER/2 - mark_depth, PLATE_THICKNESS - 0.5))
+boss = boss.cut(alignment_mark)
+print(f"Alignment mark created: {mark_width}mm wide x {mark_depth}mm deep")
+
+# Fuse boss to wall plate
+wall_plate = wall_plate.fuse(boss)
+
+# Apply fillet to boss base for better strength
+try:
+    edges_to_fillet = []
+    for edge in wall_plate.Edges:
+        # Select circular edge at the base of boss (z = PLATE_THICKNESS)
+        try:
+            center = edge.Curve.Center
+            if abs(center.z - PLATE_THICKNESS) < 0.1 and abs(edge.Length - (BOSS_OUTER_DIAMETER * 3.14159)) < 1.0:
+                edges_to_fillet.append(edge)
+        except:
+            pass
+    
+    if edges_to_fillet:
+        wall_plate = wall_plate.makeFillet(1.0, edges_to_fillet)
+        print(f"Applied fillet to boss base edge")
+except Exception as e:
+    print(f"Boss fillet failed: {e}")
+
+# =============================================
+# FINALIZE AND DISPLAY
+# =============================================
+
+print("Finalizing wall plate...")
+
+# Create the Part object in FreeCAD
+Part.show(wall_plate)
+doc.recompute()
+
+# Print summary
+print("\n" + "="*50)
+print("WALL MOUNTING PLATE GENERATED SUCCESSFULLY")
+print("="*50)
+print(f"Dimensions: {WALL_PLATE_WIDTH}mm x {WALL_PLATE_HEIGHT}mm")
+print(f"Thickness: {PLATE_THICKNESS}mm")
+print(f"Mounting Holes: {len(wall_hole_positions)} x {WALL_HOLE_DIAMETER}mm diameter")
+print(f"Corner Fillet Radius: {BRACKET_FILLET}mm")
+print(f"Boss: OD={BOSS_OUTER_DIAMETER}mm, ID={BOSS_INNER_DIAMETER}mm, Height={BOSS_HEIGHT}mm (0.5\")")
+print(f"Boss Position: Top center of plate")
+print("\nHole Positions:")
+for i, pos in enumerate(wall_hole_positions, 1):
+    print(f"  Hole {i}: X={pos[0]:+.1f}mm, Y={pos[1]:+.1f}mm")
+print("\nTo export for 3D printing:")
+print("1. Select the object")
+print("2. File -> Export -> Choose STL or 3MF format")
+print("3. Save with desired filename")
+print("="*50)
+
+# Fit view to show the entire plate
+import FreeCADGui
+FreeCADGui.SendMsgToActiveView("ViewFit")
+FreeCADGui.activeDocument().activeView().viewTop()
