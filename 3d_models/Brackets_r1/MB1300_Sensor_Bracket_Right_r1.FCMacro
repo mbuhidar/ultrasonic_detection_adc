@@ -23,7 +23,7 @@ import Part
 import math
 
 # Create new document
-doc = App.newDocument("MB1300_Sensor_Bracket_Left")
+doc = App.newDocument("MB1300_Sensor_Bracket_Right")
 
 # =============================================
 # PARAMETERS - Adjust these as needed
@@ -55,7 +55,7 @@ POST_HEIGHT = 14.0          # mm (length of support post)
 
 # --- Bracket Angle ---
 BRACKET_ANGLE = 60.0  # degrees (angle away from wall plate)
-BRACKET_YAW = 30.0    # degrees (rotation to the side, about Z-axis)
+BRACKET_YAW = -30.0    # degrees (rotation to the side, about Z-axis)
 
 # =============================================
 # HELPER FUNCTIONS
@@ -92,9 +92,10 @@ def create_cylinder_at_position(diameter, height, position):
 def create_mounting_holes(plate, hole_positions, hole_diameter, thickness):
     """Subtract mounting holes from a plate"""
     result = plate
+    extension = 2.0  # mm beyond each face for robust boolean cuts
     for pos in hole_positions:
-        hole = Part.makeCylinder(hole_diameter/2, thickness * 1.1)
-        hole.translate(App.Vector(pos[0], pos[1], -thickness * 0.05))
+        hole = Part.makeCylinder(hole_diameter/2, thickness + 2 * extension)
+        hole.translate(App.Vector(pos[0], pos[1], -extension))
         result = result.cut(hole)
     return result
 
@@ -135,8 +136,9 @@ rotation = rotation_yaw.multiply(rotation_pitch)
 # Position sensor plate at the top of the post with rotation
 offset = App.Vector(0, 0, POST_HEIGHT)
 
-# Apply rotation and translation
-sensor_plate.Placement = App.Placement(offset, rotation)
+# Apply rotation and translation by transforming geometry directly
+# (transformGeometry bakes vertex positions, ensuring correct booleans)
+sensor_plate = sensor_plate.transformGeometry(App.Placement(offset, rotation).Matrix)
 
 # =============================================
 # CREATE SUPPORT POST
@@ -148,24 +150,25 @@ print("Creating support post...")
 # We'll trim it using the sensor plate as a cutting guide
 boss_total_height = POST_HEIGHT + PLATE_THICKNESS + 10.0  # Extra length for trimming
 
-# Outer cylinder
+# Outer cylinder (solid — no bore)
 post = Part.makeCylinder(POST_OUTER_DIAMETER/2, boss_total_height)
 
-# Inner bore hole
-bore = Part.makeCylinder(POST_INNER_DIAMETER/2, boss_total_height * 1.1)
-bore.translate(App.Vector(0, 0, -boss_total_height * 0.05))
-post = post.cut(bore)
+# Add extension post at bottom end (same diameter as former inner bore)
+INNER_POST_LENGTH = 12.7  # mm (0.5 inches)
+inner_post = Part.makeCylinder(POST_INNER_DIAMETER/2, INNER_POST_LENGTH)
+inner_post.translate(App.Vector(0, 0, -INNER_POST_LENGTH))
+post = post.fuse(inner_post)
 
-# Create alignment mark on boss (aligned with z-axis)
-print("Creating alignment mark on boss...")
+# Create short alignment slot at bottom end of tube only (2mm long)
+print("Creating alignment slot on boss...")
 mark_width = 1.0  # mm
 mark_depth = 1.0  # mm
-mark_length = boss_total_height + 1.0  # Extend full length of boss
+mark_length = 2.0  # mm (short slot at bottom end)
 alignment_mark = Part.makeBox(mark_width, mark_depth, mark_length)
-# Position on the +Y side of boss (aligned with z-axis)
+# Position on the +Y side of boss at the very bottom
 alignment_mark.translate(App.Vector(-mark_width/2, POST_OUTER_DIAMETER/2 - mark_depth, -0.5))
 post = post.cut(alignment_mark)
-print(f"Alignment mark created: {mark_width}mm wide x {mark_depth}mm deep")
+print(f"Alignment slot created: {mark_width}mm wide x {mark_depth}mm deep x {mark_length}mm long")
 
 # Position post at origin
 post.translate(App.Vector(0, 0, 0))
@@ -181,11 +184,17 @@ print("Combining sensor bracket and post...")
 # Fuse sensor plate and support post
 bracket = sensor_plate.fuse(post)
 
+# Clean up internal seam edges from boolean fusion
+try:
+    bracket = bracket.removeSplitter()
+except Exception as e:
+    print(f"Warning: removeSplitter after fuse failed: {e}")
+
 # Rotate entire bracket 90 degrees around X-axis to align boss with Y-axis
 # This makes the vertical post (Z-axis) become horizontal along Y-axis
 print("Aligning boss with Y-axis...")
 align_rotation = App.Rotation(App.Vector(1, 0, 0), 90)
-bracket.Placement = App.Placement(App.Vector(0, 0, 0), align_rotation)
+bracket = bracket.transformGeometry(App.Placement(App.Vector(0, 0, 0), align_rotation).Matrix)
 
 # Apply fillet to the joint between sensor plate and post for strength
 try:
@@ -194,8 +203,9 @@ try:
         # Look for edges near the joint at z = POST_HEIGHT
         try:
             midpoint = edge.CenterOfMass
-            # Check if edge is near the joint area
-            if (abs(midpoint.z - POST_HEIGHT) < 3 and 
+            # After 90° X rotation, the joint at z=POST_HEIGHT
+            # is now at y=-POST_HEIGHT
+            if (abs(midpoint.y + POST_HEIGHT) < 3 and 
                 edge.Length > 3 and edge.Length < POST_OUTER_DIAMETER * 4):
                 edges_to_fillet.append(edge)
         except:
@@ -207,44 +217,42 @@ try:
 except Exception as e:
     print(f"Joint fillet failed: {e}")
 
-# Cut volumes in all four quadrants of the sensor mounting face
-print("Creating cutting volumes in four quadrants...")
-cut_size = 1000
-quadrant_offset = cut_size / 2
+# Trim post flush with sensor plate surface using a single half-space cut
+# (A single cut avoids internal seam edges that four quadrant cuts introduce,
+#  which cause non-manifold topology where seams intersect hole geometry)
+print("Trimming post flush with sensor plate surface...")
+cut_size = 2000
 
 # Combine rotations: first sensor plate rotation, then 90-degree alignment
 combined_rotation = align_rotation.multiply(rotation)
 
-# Define quadrant offsets in local coordinates
-quadrants = [
-    (quadrant_offset, quadrant_offset),   # Quadrant 1: +X, +Y
-    (-quadrant_offset, quadrant_offset),  # Quadrant 2: -X, +Y
-    (-quadrant_offset, -quadrant_offset), # Quadrant 3: -X, -Y
-    (quadrant_offset, -quadrant_offset)   # Quadrant 4: +X, -Y
-]
+# Create a single large cutting box extending outward from the plate surface
+# Box starts at Z=0 (plate surface) and extends in +Z (outward only)
+cutting_volume = Part.makeBox(cut_size, cut_size, cut_size)
+cutting_volume.translate(App.Vector(-cut_size/2, -cut_size/2, 0))
 
-for i, (x_off, y_off) in enumerate(quadrants, 1):
-    # Create box centered at origin
-    cutting_volume = Part.makeBox(cut_size, cut_size, cut_size)
-    cutting_volume.translate(App.Vector(-cut_size/2, -cut_size/2, -cut_size/2))
-    
-    # Calculate position in sensor plate local coords (at mounting surface with quadrant offset)
-    local_origin = App.Vector(x_off, y_off, PLATE_THICKNESS)
-    
-    # Transform to world coordinates before 90-degree rotation
-    world_origin = offset.add(rotation.multVec(local_origin))
-    
-    # Apply 90-degree rotation to get final position
-    final_origin = align_rotation.multVec(world_origin)
-    
-    # Apply final transformation
-    cutting_volume.Placement = App.Placement(final_origin, combined_rotation)
-    
-    # Perform the cut
-    bracket = bracket.cut(cutting_volume)
-    print(f"Quadrant {i} cut applied at offset ({x_off}, {y_off})")
+# Position at center of plate surface (z = PLATE_THICKNESS in local coords)
+local_origin = App.Vector(0, 0, PLATE_THICKNESS)
 
-print("All quadrant cuts applied")
+# Transform to world coordinates before 90-degree rotation
+world_origin = offset.add(rotation.multVec(local_origin))
+
+# Apply 90-degree rotation to get final position
+final_origin = align_rotation.multVec(world_origin)
+
+# Apply final transformation by transforming geometry directly
+cutting_volume = cutting_volume.transformGeometry(App.Placement(final_origin, combined_rotation).Matrix)
+
+# Single cut operation
+bracket = bracket.cut(cutting_volume)
+print("Post trimmed flush with plate surface")
+
+# Clean up topology to ensure manifold result
+try:
+    bracket = bracket.removeSplitter()
+    print("Shape topology cleaned up")
+except Exception as e:
+    print(f"Warning: removeSplitter after trim failed: {e}")
 
 # =============================================
 # FINALIZE AND DISPLAY

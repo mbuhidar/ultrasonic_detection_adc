@@ -1,0 +1,250 @@
+# -*- coding: utf-8 -*-
+"""
+FreeCAD Macro: Flat-Surface Mounting Plate for RPLIDAR A1M8
+
+This macro generates a flat mounting plate to attach an RPLIDAR A1M8
+to a flat surface (table, enclosure lid, robot chassis, etc.).
+
+Features:
+- 4 through-holes matching the RPLIDAR A1 mounting pattern
+- 4 countersink-compatible holes at the plate corners for surface mounting
+- Rounded corners for a clean finish
+- Parametric design — adjust any dimension below
+
+RPLIDAR A1 Mounting Pattern (from datasheet drawing):
+- Top mounting holes: 56mm apart (horizontal center-to-center)
+- Bottom mounting holes: 40mm apart (horizontal center-to-center)
+- Body height: 45.50mm
+- Mounting hole diameter: Ø3 (M3)
+
+Usage:
+1. Open FreeCAD
+2. Run this macro: Macro -> Macros... -> Execute
+3. Adjust parameters below as needed
+4. Export: File -> Export -> STL or 3MF
+"""
+
+import FreeCAD as App
+import Part
+import math
+
+# Create new document
+doc = App.newDocument("RPLIDAR_A1_Mounting_Plate")
+
+# =============================================
+# PARAMETERS - Adjust these as needed
+# =============================================
+
+# --- RPLIDAR A1 Body Dimensions ---
+LIDAR_BODY_WIDTH_TOP = 56.0     # mm (width at widest point / top screw spacing)
+LIDAR_BODY_WIDTH_BOTTOM = 40.0  # mm (width at narrow end / bottom screw spacing)
+LIDAR_BODY_HEIGHT = 45.50       # mm (overall body height)
+
+# --- RPLIDAR Mounting Holes ---
+# Horizontal spacings (center-to-center)
+LIDAR_HOLE_SPACING_WIDE = 56.0    # mm (wider-spaced row)
+LIDAR_HOLE_SPACING_NARROW = 40.0  # mm (closer-spaced row)
+LIDAR_HOLE_DIAMETER = 3.2         # mm (M3 clearance, close fit)
+# Vertical distances from LIDAR rotation centerline
+LIDAR_HOLE_WIDE_FROM_CENTER = 28.0   # mm (56mm-spaced holes, closer to center)
+LIDAR_HOLE_NARROW_FROM_CENTER = 42.0 # mm (40mm-spaced holes, farther from center)
+
+# --- Mounting Plate ---
+# Plate is centered on the LIDAR rotation centerline (Y=0 = rotation axis)
+PLATE_MARGIN_X = 10.0           # mm (extra width beyond widest hole row, each side)
+PLATE_MARGIN_Y_TOP = 10.0       # mm (extra above wide row holes)
+PLATE_MARGIN_Y_BOTTOM = 10.0    # mm (extra below lowest holes)
+PLATE_EXTENSION_BOTTOM = 50.8   # mm (2 inches extension in front of narrow row)
+PLATE_THICKNESS = 3.0           # mm
+PLATE_FILLET = 3.0              # mm (corner radius)
+
+# Computed plate dimensions
+# Width: accommodate the wider 56mm row plus margin
+PLATE_WIDTH = LIDAR_HOLE_SPACING_WIDE + 2 * PLATE_MARGIN_X  # 76mm
+# Height: from above the wide row to below the narrow row + 2" extension
+PLATE_TOP = LIDAR_HOLE_WIDE_FROM_CENTER + PLATE_MARGIN_Y_TOP    # 38mm above center
+PLATE_BOTTOM = LIDAR_HOLE_NARROW_FROM_CENTER + PLATE_MARGIN_Y_BOTTOM + PLATE_EXTENSION_BOTTOM  # 102.8mm below center
+PLATE_HEIGHT = PLATE_TOP + PLATE_BOTTOM                          # 140.8mm
+# Plate center Y offset (plate center vs rotation centerline)
+PLATE_CENTER_Y_OFFSET = (PLATE_TOP - PLATE_BOTTOM) / 2          # rotation center is above plate center
+
+# --- Surface Mounting Holes (to attach plate to flat surface) ---
+# Positioned INSIDE the sensor mounting post pattern
+SURFACE_HOLE_DIAMETER = 4.3     # mm (M4 clearance)
+SURFACE_HOLE_INSET_X = 8.0     # mm inward from each row's X positions
+SURFACE_HOLE_INSET_Y = 8.0     # mm inward from each row Y positions
+
+# --- RPLIDAR Standoffs ---
+STANDOFF_HEIGHT = 40.64          # mm (1.6 inches — clearance between plate and LIDAR bottom)
+STANDOFF_OUTER_DIAMETER = 9.0   # mm (boss outer diameter)
+STANDOFF_BORE_DIAMETER = 2.5    # mm (M3 tap drill — screws thread into standoff)
+STANDOFF_BORE_DEPTH = 12.7      # mm (0.5 inches — blind hole from top of standoff)
+
+# =============================================
+# HELPER FUNCTIONS
+# =============================================
+
+def create_rounded_plate(width, height, thickness, fillet_radius=0):
+    """Create a rectangular plate with filleted vertical edges, centered at origin."""
+    plate = Part.makeBox(width, height, thickness)
+    plate.translate(App.Vector(-width / 2, -height / 2, 0))
+
+    if fillet_radius > 0 and fillet_radius < min(width, height) / 2:
+        try:
+            edges_to_fillet = []
+            for edge in plate.Edges:
+                if abs(edge.tangentAt(0).z) > 0.9:
+                    edges_to_fillet.append(edge)
+            if edges_to_fillet:
+                plate = plate.makeFillet(fillet_radius, edges_to_fillet)
+        except Exception as e:
+            print(f"Warning: Corner fillet failed ({e}), using sharp corners")
+
+    return plate
+
+
+def drill_holes(solid, hole_positions, diameter, depth, z_start=-0.5):
+    """Subtract cylindrical holes from a solid.
+    
+    Each hole extends from z_start to z_start + depth.
+    Uses generous depth (> plate thickness) to ensure clean through-cuts.
+    """
+    extension = 2.0  # mm extra beyond each face for robust booleans
+    result = solid
+    for (x, y) in hole_positions:
+        cyl = Part.makeCylinder(diameter / 2, depth + 2 * extension)
+        cyl.translate(App.Vector(x, y, z_start - extension))
+        result = result.cut(cyl)
+    return result
+
+
+# =============================================
+# BUILD MOUNTING PLATE
+# =============================================
+
+print("Creating RPLIDAR A1 mounting plate...")
+print(f"Plate dimensions: {PLATE_WIDTH:.1f}mm x {PLATE_HEIGHT:.1f}mm x {PLATE_THICKNESS}mm")
+
+# Create base plate (centered at origin, Z=0 is bottom face)
+plate = create_rounded_plate(PLATE_WIDTH, PLATE_HEIGHT, PLATE_THICKNESS, PLATE_FILLET)
+
+# =============================================
+# RPLIDAR MOUNTING HOLES
+# =============================================
+
+print("Adding RPLIDAR mounting holes...")
+
+# Hole positions relative to plate center
+# Y=0 on plate = rotation centerline + PLATE_CENTER_Y_OFFSET
+# Rotation centerline is at Y = -PLATE_CENTER_Y_OFFSET in plate coords
+rot_center_y = -PLATE_CENTER_Y_OFFSET
+wide_y = rot_center_y + LIDAR_HOLE_WIDE_FROM_CENTER    # 56mm-spaced row, 28mm above center
+narrow_y = rot_center_y - LIDAR_HOLE_NARROW_FROM_CENTER  # 40mm-spaced row, 42mm below center
+
+lidar_holes = [
+    (-LIDAR_HOLE_SPACING_WIDE / 2, wide_y),      # Wide row left
+    ( LIDAR_HOLE_SPACING_WIDE / 2, wide_y),       # Wide row right
+    (-LIDAR_HOLE_SPACING_NARROW / 2, narrow_y),   # Narrow row left
+    ( LIDAR_HOLE_SPACING_NARROW / 2, narrow_y),   # Narrow row right
+]
+
+print(f"  Wide row (56mm):  Y={wide_y:+.2f}mm  (28mm above rotation center)")
+print(f"  Narrow row (40mm): Y={narrow_y:+.2f}mm  (42mm below rotation center)")
+
+# =============================================
+# RPLIDAR STANDOFFS
+# =============================================
+
+print("Adding standoffs at RPLIDAR mounting holes...")
+
+for i, (x, y) in enumerate(lidar_holes, 1):
+    # Outer boss rising from top face of plate
+    boss = Part.makeCylinder(STANDOFF_OUTER_DIAMETER / 2, STANDOFF_HEIGHT)
+    boss.translate(App.Vector(x, y, PLATE_THICKNESS))
+
+    # Blind bore hole in top 0.5" of standoff only
+    extension = 1.0  # small overshoot at top for clean cut
+    bore_z_start = PLATE_THICKNESS + STANDOFF_HEIGHT - STANDOFF_BORE_DEPTH
+    bore = Part.makeCylinder(STANDOFF_BORE_DIAMETER / 2,
+                             STANDOFF_BORE_DEPTH + extension)
+    bore.translate(App.Vector(x, y, bore_z_start))
+
+    # Fuse boss onto plate, then subtract bore
+    plate = plate.fuse(boss)
+    plate = plate.cut(bore)
+
+print(f"  4 standoffs: OD={STANDOFF_OUTER_DIAMETER}mm, bore={STANDOFF_BORE_DIAMETER}mm (M3 tap), depth={STANDOFF_BORE_DEPTH}mm, height={STANDOFF_HEIGHT}mm")
+
+# =============================================
+# SURFACE MOUNTING HOLES
+# =============================================
+
+print("Adding surface mounting holes (inside sensor post pattern)...")
+
+# Surface holes positioned inside the trapezoidal standoff pattern
+# X: inset from each row's own X positions by the same amount
+# Y: inset from wide and narrow row Y positions
+surf_wide_x = LIDAR_HOLE_SPACING_WIDE / 2 - SURFACE_HOLE_INSET_X
+surf_narrow_x = LIDAR_HOLE_SPACING_NARROW / 2 - SURFACE_HOLE_INSET_X
+surf_top_y = wide_y - SURFACE_HOLE_INSET_Y
+surf_bottom_y = narrow_y + SURFACE_HOLE_INSET_Y
+
+surface_holes = [
+    (-surf_wide_x, surf_top_y),      # Upper left (inside wide row)
+    ( surf_wide_x, surf_top_y),      # Upper right (inside wide row)
+    (-surf_narrow_x, surf_bottom_y), # Lower left (inside narrow row)
+    ( surf_narrow_x, surf_bottom_y), # Lower right (inside narrow row)
+]
+
+plate = drill_holes(plate, surface_holes, SURFACE_HOLE_DIAMETER, PLATE_THICKNESS)
+
+print(f"  4 holes inside standoff pattern")
+print(f"  Hole diameter: {SURFACE_HOLE_DIAMETER}mm (M4 clearance)")
+
+# =============================================
+# CLEAN UP TOPOLOGY
+# =============================================
+
+try:
+    plate = plate.removeSplitter()
+    print("Shape topology cleaned up")
+except Exception as e:
+    print(f"Warning: removeSplitter failed: {e}")
+
+# =============================================
+# FINALIZE AND DISPLAY
+# =============================================
+
+print("Finalizing mounting plate...")
+
+Part.show(plate)
+doc.recompute()
+
+# Print summary
+print("\n" + "=" * 55)
+print("RPLIDAR A1 MOUNTING PLATE GENERATED SUCCESSFULLY")
+print("=" * 55)
+print(f"Plate:  {PLATE_WIDTH:.1f} x {PLATE_HEIGHT:.1f} x {PLATE_THICKNESS} mm")
+print(f"Fillet: {PLATE_FILLET} mm corner radius")
+print(f"Standoffs: 4x OD {STANDOFF_OUTER_DIAMETER}mm, bore {STANDOFF_BORE_DIAMETER}mm, height {STANDOFF_HEIGHT}mm")
+print(f"RPLIDAR holes: 4x Ø{LIDAR_HOLE_DIAMETER}mm (through standoffs)")
+print(f"  Wide row:   {LIDAR_HOLE_SPACING_WIDE}mm apart, {LIDAR_HOLE_WIDE_FROM_CENTER}mm from rotation center")
+print(f"  Narrow row: {LIDAR_HOLE_SPACING_NARROW}mm apart, {LIDAR_HOLE_NARROW_FROM_CENTER}mm from rotation center")
+print(f"Surface holes: 4x Ø{SURFACE_HOLE_DIAMETER}mm (M4 clearance)")
+print()
+print("Hole positions (X, Y) from plate center:")
+for i, (x, y) in enumerate(lidar_holes, 1):
+    print(f"  RPLIDAR hole {i}: ({x:+.2f}, {y:+.2f})")
+for i, (x, y) in enumerate(surface_holes, 1):
+    print(f"  Surface hole {i}: ({x:+.2f}, {y:+.2f})")
+print()
+print("To export for 3D printing:")
+print("1. Select the object")
+print("2. File -> Export -> Choose STL or 3MF format")
+print("3. Save with desired filename")
+print("=" * 55)
+
+# Fit view
+import FreeCADGui
+FreeCADGui.SendMsgToActiveView("ViewFit")
+FreeCADGui.activeDocument().activeView().viewTop()
