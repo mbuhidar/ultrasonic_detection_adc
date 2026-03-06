@@ -1,0 +1,235 @@
+# -*- coding: utf-8 -*-
+"""
+FreeCAD Macro: Mounting Bracket for Orange Pi 5
+
+This macro generates a flat mounting bracket with:
+- Wall mounting plate with 4 holes outside the Orange Pi 5 footprint
+  for screwdriver access (no interference with the board)
+- 4 standoff bosses matching the Orange Pi 5 mounting hole pattern
+- Through-holes in standoffs for M2.5 screws
+
+Orange Pi 5 Mounting Hole Pattern (from mechanical drawing):
+- Board size: 100mm x 62mm
+- 4 mounting holes (M2.5 clearance, Ø2.75mm):
+    Hole 1:   3.5mm from left,   3.5mm from bottom  (bottom-left)
+    Hole 2:   3.5mm from left,  58.5mm from bottom  (top-left)
+    Hole 3:  96.5mm from left,   3.5mm from bottom  (bottom-right)
+    Hole 4:  96.5mm from left,  58.5mm from bottom  (top-right)
+- Rectangular pattern: 93mm x 55mm
+
+Usage:
+1. Open FreeCAD
+2. Run this macro: Macro -> Macros... -> Execute
+3. Adjust parameters below as needed
+4. Export: File -> Export -> STL or 3MF
+"""
+
+import FreeCAD as App
+import Part
+import math
+
+# Create new document
+doc = App.newDocument("OrangePi5_Bracket")
+
+# =============================================
+# PARAMETERS - Adjust these as needed
+# =============================================
+
+# --- Orange Pi 5 Board ---
+BOARD_WIDTH = 100.0       # mm (X dimension, left to right)
+BOARD_HEIGHT = 62.0       # mm (Y dimension, bottom to top)
+
+# --- Orange Pi 5 Mounting Holes (from board origin at bottom-left) ---
+HOLE_EDGE_OFFSET_X = 3.5  # mm from left/right edge
+HOLE_EDGE_OFFSET_Y = 3.5  # mm from bottom/top edge
+
+OPI_HOLES_FROM_CORNER = [
+    (HOLE_EDGE_OFFSET_X,                HOLE_EDGE_OFFSET_Y),                 # Bottom-left
+    (HOLE_EDGE_OFFSET_X,                BOARD_HEIGHT - HOLE_EDGE_OFFSET_Y),  # Top-left
+    (BOARD_WIDTH - HOLE_EDGE_OFFSET_X,  HOLE_EDGE_OFFSET_Y),                # Bottom-right
+    (BOARD_WIDTH - HOLE_EDGE_OFFSET_X,  BOARD_HEIGHT - HOLE_EDGE_OFFSET_Y), # Top-right
+]
+
+# Convert to positions relative to board center
+OPI_HOLES = [
+    (x - BOARD_WIDTH / 2, y - BOARD_HEIGHT / 2)
+    for (x, y) in OPI_HOLES_FROM_CORNER
+]
+
+OPI_HOLE_DIAMETER = 2.75  # mm (M2.5 clearance, close fit)
+
+# --- Mounting Plate ---
+PLATE_MARGIN_X = 12.0     # mm extra width beyond board edge, each side
+PLATE_MARGIN_Y = 12.0     # mm extra height beyond board edge, each side
+PLATE_THICKNESS = 3.0      # mm
+PLATE_FILLET = 3.0         # mm (corner radius)
+
+PLATE_WIDTH = BOARD_WIDTH + 2 * PLATE_MARGIN_X
+PLATE_HEIGHT = BOARD_HEIGHT + 2 * PLATE_MARGIN_Y
+
+# --- Standoff Bosses ---
+STANDOFF_HEIGHT = 8.0              # mm (clearance for components on underside)
+STANDOFF_OUTER_DIAMETER = 6.0      # mm
+STANDOFF_TOP_DIAMETER = 5.0        # mm (slight taper)
+STANDOFF_BORE_DIAMETER = 2.75      # mm (M2.5 clearance for through-hole)
+
+# --- Wall Mounting Holes ---
+# Positioned outside the Orange Pi 5 board profile for screwdriver access
+WALL_HOLE_DIAMETER = 4.3           # mm (M4 clearance)
+WALL_HOLE_OFFSET_X = 8.0           # mm from plate edge (X direction)
+WALL_HOLE_OFFSET_Y = 8.0           # mm from plate edge (Y direction)
+
+# =============================================
+# HELPER FUNCTIONS
+# =============================================
+
+def create_rounded_plate(width, height, thickness, fillet_radius=0):
+    """Create a rectangular plate with filleted vertical edges, centered at origin."""
+    plate = Part.makeBox(width, height, thickness)
+    plate.translate(App.Vector(-width / 2, -height / 2, 0))
+
+    if fillet_radius > 0 and fillet_radius < min(width, height) / 2:
+        try:
+            edges_to_fillet = []
+            for edge in plate.Edges:
+                if abs(edge.tangentAt(0).z) > 0.9:
+                    edges_to_fillet.append(edge)
+            if edges_to_fillet:
+                plate = plate.makeFillet(fillet_radius, edges_to_fillet)
+        except Exception as e:
+            print(f"Warning: Corner fillet failed ({e}), using sharp corners")
+
+    return plate
+
+
+def drill_holes(solid, hole_positions, diameter, depth, z_start=-0.5):
+    """Subtract cylindrical holes from a solid.
+
+    Each hole extends from z_start to z_start + depth.
+    Uses generous depth (> plate thickness) for clean through-cuts.
+    """
+    extension = 2.0  # mm extra beyond each face for robust booleans
+    result = solid
+    for (x, y) in hole_positions:
+        cyl = Part.makeCylinder(diameter / 2, depth + 2 * extension)
+        cyl.translate(App.Vector(x, y, z_start - extension))
+        result = result.cut(cyl)
+    return result
+
+
+# =============================================
+# BUILD MOUNTING PLATE
+# =============================================
+
+print("Creating Orange Pi 5 mounting bracket...")
+print(f"Plate dimensions: {PLATE_WIDTH:.1f}mm x {PLATE_HEIGHT:.1f}mm x {PLATE_THICKNESS}mm")
+
+# Create base plate (centered at origin, Z=0 is bottom/wall face)
+plate = create_rounded_plate(PLATE_WIDTH, PLATE_HEIGHT, PLATE_THICKNESS, PLATE_FILLET)
+
+# =============================================
+# ORANGE PI 5 STANDOFFS
+# =============================================
+
+print("Adding standoffs at Orange Pi 5 mounting holes...")
+
+for i, (x, y) in enumerate(OPI_HOLES, 1):
+    # Tapered outer boss rising from top face of plate
+    boss = Part.makeCone(
+        STANDOFF_OUTER_DIAMETER / 2,
+        STANDOFF_TOP_DIAMETER / 2,
+        STANDOFF_HEIGHT
+    )
+    boss.translate(App.Vector(x, y, PLATE_THICKNESS))
+
+    # Through-bore hole from plate bottom through standoff top
+    bore_total = PLATE_THICKNESS + STANDOFF_HEIGHT
+    extension = 2.0
+    bore = Part.makeCylinder(STANDOFF_BORE_DIAMETER / 2, bore_total + 2 * extension)
+    bore.translate(App.Vector(x, y, -extension))
+
+    # Fuse boss onto plate, then subtract bore
+    plate = plate.fuse(boss)
+    plate = plate.cut(bore)
+
+    print(f"  Standoff {i}: ({x:+.2f}, {y:+.2f})")
+
+print(f"  4 standoffs: OD {STANDOFF_OUTER_DIAMETER}mm -> {STANDOFF_TOP_DIAMETER}mm,"
+      f" bore {STANDOFF_BORE_DIAMETER}mm, height {STANDOFF_HEIGHT}mm")
+
+# =============================================
+# WALL MOUNTING HOLES
+# =============================================
+
+print("Adding wall mounting holes (outside Orange Pi 5 profile)...")
+
+# Place holes at plate corners, well outside the board footprint
+wall_x = PLATE_WIDTH / 2 - WALL_HOLE_OFFSET_X
+wall_y = PLATE_HEIGHT / 2 - WALL_HOLE_OFFSET_Y
+
+wall_holes = [
+    (-wall_x,  wall_y),   # Top left
+    ( wall_x,  wall_y),   # Top right
+    (-wall_x, -wall_y),   # Bottom left
+    ( wall_x, -wall_y),   # Bottom right
+]
+
+# Verify all wall holes are outside the board footprint
+for i, (wx, wy) in enumerate(wall_holes, 1):
+    inside_x = abs(wx) < BOARD_WIDTH / 2
+    inside_y = abs(wy) < BOARD_HEIGHT / 2
+    if inside_x and inside_y:
+        print(f"  WARNING: Wall hole {i} at ({wx:.1f}, {wy:.1f}) is inside board footprint!")
+    else:
+        print(f"  Wall hole {i}: ({wx:+.2f}, {wy:+.2f}) - outside board footprint")
+
+plate = drill_holes(plate, wall_holes, WALL_HOLE_DIAMETER, PLATE_THICKNESS)
+
+print(f"  4 holes: Ø{WALL_HOLE_DIAMETER}mm (M4 clearance)")
+
+# =============================================
+# CLEAN UP TOPOLOGY
+# =============================================
+
+try:
+    plate = plate.removeSplitter()
+    print("Shape topology cleaned up")
+except Exception as e:
+    print(f"Warning: removeSplitter failed: {e}")
+
+# =============================================
+# FINALIZE AND DISPLAY
+# =============================================
+
+print("Finalizing bracket...")
+
+Part.show(plate)
+doc.recompute()
+
+# Print summary
+print("\n" + "=" * 60)
+print("ORANGE PI 5 BRACKET GENERATED SUCCESSFULLY")
+print("=" * 60)
+print(f"Plate:      {PLATE_WIDTH:.1f} x {PLATE_HEIGHT:.1f} x {PLATE_THICKNESS} mm")
+print(f"Fillet:     {PLATE_FILLET} mm corner radius")
+print(f"Board:      {BOARD_WIDTH} x {BOARD_HEIGHT} mm (Orange Pi 5)")
+print(f"Standoffs:  4x OD {STANDOFF_OUTER_DIAMETER}->{STANDOFF_TOP_DIAMETER}mm,"
+      f" height {STANDOFF_HEIGHT}mm, bore {STANDOFF_BORE_DIAMETER}mm")
+print(f"Wall holes: 4x Ø{WALL_HOLE_DIAMETER}mm (outside board footprint)")
+print()
+print("Hole positions (X, Y) from plate center:")
+for i, (x, y) in enumerate(OPI_HOLES, 1):
+    print(f"  OPi5 hole {i}: ({x:+.2f}, {y:+.2f})")
+for i, (x, y) in enumerate(wall_holes, 1):
+    print(f"  Wall hole {i}: ({x:+.2f}, {y:+.2f})")
+print()
+print("To export for 3D printing:")
+print("1. Select the object")
+print("2. File -> Export -> Choose STL or 3MF format")
+print("3. Save with desired filename")
+print("=" * 60)
+
+# Fit view
+import FreeCADGui
+FreeCADGui.SendMsgToActiveView("ViewFit")
+FreeCADGui.activeDocument().activeView().viewTop()

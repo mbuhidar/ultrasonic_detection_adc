@@ -1,0 +1,233 @@
+# -*- coding: utf-8 -*-
+"""
+FreeCAD Macro: Mounting Bracket for Arduino UNO R3
+
+This macro generates a flat mounting bracket with:
+- Wall mounting plate with 4 holes outside the UNO footprint for
+  screwdriver access (no interference with the board)
+- 4 standoff bosses matching the Arduino UNO R3 mounting hole pattern
+- Through-holes in standoffs for M3 screws
+
+Arduino UNO R3 Mounting Hole Pattern (from official drawings):
+- Board size: 68.58mm x 53.34mm (2.7" x 2.1")
+- 4 mounting holes (M3 clearance, Ø3.2mm):
+    Hole 1:  14.00mm from left,  2.54mm from bottom
+    Hole 2:  15.24mm from left, 50.80mm from bottom
+    Hole 3:  66.04mm from left,  7.62mm from bottom
+    Hole 4:  66.04mm from left, 35.56mm from bottom
+- Note: The hole pattern is NOT rectangular — Hole 1 & 2 are slightly offset in X.
+
+Usage:
+1. Open FreeCAD
+2. Run this macro: Macro -> Macros... -> Execute
+3. Adjust parameters below as needed
+4. Export: File -> Export -> STL or 3MF
+"""
+
+import FreeCAD as App
+import Part
+import math
+
+# Create new document
+doc = App.newDocument("Arduino_UNO_R3_Bracket")
+
+# =============================================
+# PARAMETERS - Adjust these as needed
+# =============================================
+
+# --- Arduino UNO R3 Board ---
+BOARD_WIDTH = 68.58      # mm (X dimension, left to right)
+BOARD_HEIGHT = 53.34     # mm (Y dimension, bottom to top)
+
+# --- Arduino Mounting Holes (from board origin at bottom-left) ---
+# Positions relative to board bottom-left corner
+UNO_HOLE_1 = (14.00,  2.54)   # Bottom-left area
+UNO_HOLE_2 = (15.24, 50.80)   # Top-left area
+UNO_HOLE_3 = (66.04,  7.62)   # Bottom-right area
+UNO_HOLE_4 = (66.04, 35.56)   # Mid-right area
+
+UNO_HOLES_FROM_CORNER = [UNO_HOLE_1, UNO_HOLE_2, UNO_HOLE_3, UNO_HOLE_4]
+
+# Convert to positions relative to board center
+UNO_HOLES = [
+    (x - BOARD_WIDTH / 2, y - BOARD_HEIGHT / 2)
+    for (x, y) in UNO_HOLES_FROM_CORNER
+]
+
+UNO_HOLE_DIAMETER = 3.2  # mm (M3 clearance, close fit)
+
+# --- Mounting Plate ---
+PLATE_MARGIN_X = 12.0    # mm extra width beyond board edge, each side
+PLATE_MARGIN_Y = 12.0    # mm extra height beyond board edge, each side
+PLATE_THICKNESS = 3.0     # mm
+PLATE_FILLET = 3.0        # mm (corner radius)
+
+PLATE_WIDTH = BOARD_WIDTH + 2 * PLATE_MARGIN_X
+PLATE_HEIGHT = BOARD_HEIGHT + 2 * PLATE_MARGIN_Y
+
+# --- Standoff Bosses ---
+STANDOFF_HEIGHT = 8.0             # mm (clearance for components on UNO underside)
+STANDOFF_OUTER_DIAMETER = 7.0     # mm
+STANDOFF_TOP_DIAMETER = 6.0       # mm (slight taper)
+STANDOFF_BORE_DIAMETER = 3.2      # mm (M3 clearance for through-hole)
+
+# --- Wall Mounting Holes ---
+# Positioned outside the UNO board profile for screwdriver access
+WALL_HOLE_DIAMETER = 4.3          # mm (M4 clearance)
+WALL_HOLE_OFFSET_X = 8.0          # mm from plate edge (X direction)
+WALL_HOLE_OFFSET_Y = 8.0          # mm from plate edge (Y direction)
+
+# =============================================
+# HELPER FUNCTIONS
+# =============================================
+
+def create_rounded_plate(width, height, thickness, fillet_radius=0):
+    """Create a rectangular plate with filleted vertical edges, centered at origin."""
+    plate = Part.makeBox(width, height, thickness)
+    plate.translate(App.Vector(-width / 2, -height / 2, 0))
+
+    if fillet_radius > 0 and fillet_radius < min(width, height) / 2:
+        try:
+            edges_to_fillet = []
+            for edge in plate.Edges:
+                if abs(edge.tangentAt(0).z) > 0.9:
+                    edges_to_fillet.append(edge)
+            if edges_to_fillet:
+                plate = plate.makeFillet(fillet_radius, edges_to_fillet)
+        except Exception as e:
+            print(f"Warning: Corner fillet failed ({e}), using sharp corners")
+
+    return plate
+
+
+def drill_holes(solid, hole_positions, diameter, depth, z_start=-0.5):
+    """Subtract cylindrical holes from a solid.
+
+    Each hole extends from z_start to z_start + depth.
+    Uses generous depth (> plate thickness) for clean through-cuts.
+    """
+    extension = 2.0  # mm extra beyond each face for robust booleans
+    result = solid
+    for (x, y) in hole_positions:
+        cyl = Part.makeCylinder(diameter / 2, depth + 2 * extension)
+        cyl.translate(App.Vector(x, y, z_start - extension))
+        result = result.cut(cyl)
+    return result
+
+
+# =============================================
+# BUILD MOUNTING PLATE
+# =============================================
+
+print("Creating Arduino UNO R3 mounting bracket...")
+print(f"Plate dimensions: {PLATE_WIDTH:.1f}mm x {PLATE_HEIGHT:.1f}mm x {PLATE_THICKNESS}mm")
+
+# Create base plate (centered at origin, Z=0 is bottom/wall face)
+plate = create_rounded_plate(PLATE_WIDTH, PLATE_HEIGHT, PLATE_THICKNESS, PLATE_FILLET)
+
+# =============================================
+# ARDUINO STANDOFFS
+# =============================================
+
+print("Adding standoffs at Arduino mounting holes...")
+
+for i, (x, y) in enumerate(UNO_HOLES, 1):
+    # Tapered outer boss rising from top face of plate
+    boss = Part.makeCone(
+        STANDOFF_OUTER_DIAMETER / 2,
+        STANDOFF_TOP_DIAMETER / 2,
+        STANDOFF_HEIGHT
+    )
+    boss.translate(App.Vector(x, y, PLATE_THICKNESS))
+
+    # Through-bore hole from plate bottom through standoff top
+    bore_total = PLATE_THICKNESS + STANDOFF_HEIGHT
+    extension = 2.0
+    bore = Part.makeCylinder(STANDOFF_BORE_DIAMETER / 2, bore_total + 2 * extension)
+    bore.translate(App.Vector(x, y, -extension))
+
+    # Fuse boss onto plate, then subtract bore
+    plate = plate.fuse(boss)
+    plate = plate.cut(bore)
+
+    print(f"  Standoff {i}: ({x:+.2f}, {y:+.2f})")
+
+print(f"  4 standoffs: OD {STANDOFF_OUTER_DIAMETER}mm -> {STANDOFF_TOP_DIAMETER}mm,"
+      f" bore {STANDOFF_BORE_DIAMETER}mm, height {STANDOFF_HEIGHT}mm")
+
+# =============================================
+# WALL MOUNTING HOLES
+# =============================================
+
+print("Adding wall mounting holes (outside UNO profile)...")
+
+# Place holes at plate corners, well outside the UNO board footprint
+wall_x = PLATE_WIDTH / 2 - WALL_HOLE_OFFSET_X
+wall_y = PLATE_HEIGHT / 2 - WALL_HOLE_OFFSET_Y
+
+wall_holes = [
+    (-wall_x,  wall_y),   # Top left
+    ( wall_x,  wall_y),   # Top right
+    (-wall_x, -wall_y),   # Bottom left
+    ( wall_x, -wall_y),   # Bottom right
+]
+
+# Verify all wall holes are outside the UNO board footprint
+for i, (wx, wy) in enumerate(wall_holes, 1):
+    inside_x = abs(wx) < BOARD_WIDTH / 2
+    inside_y = abs(wy) < BOARD_HEIGHT / 2
+    if inside_x and inside_y:
+        print(f"  WARNING: Wall hole {i} at ({wx:.1f}, {wy:.1f}) is inside UNO footprint!")
+    else:
+        print(f"  Wall hole {i}: ({wx:+.2f}, {wy:+.2f}) - outside UNO footprint")
+
+plate = drill_holes(plate, wall_holes, WALL_HOLE_DIAMETER, PLATE_THICKNESS)
+
+print(f"  4 holes: Ø{WALL_HOLE_DIAMETER}mm (M4 clearance)")
+
+# =============================================
+# CLEAN UP TOPOLOGY
+# =============================================
+
+try:
+    plate = plate.removeSplitter()
+    print("Shape topology cleaned up")
+except Exception as e:
+    print(f"Warning: removeSplitter failed: {e}")
+
+# =============================================
+# FINALIZE AND DISPLAY
+# =============================================
+
+print("Finalizing bracket...")
+
+Part.show(plate)
+doc.recompute()
+
+# Print summary
+print("\n" + "=" * 60)
+print("ARDUINO UNO R3 BRACKET GENERATED SUCCESSFULLY")
+print("=" * 60)
+print(f"Plate:      {PLATE_WIDTH:.1f} x {PLATE_HEIGHT:.1f} x {PLATE_THICKNESS} mm")
+print(f"Fillet:     {PLATE_FILLET} mm corner radius")
+print(f"Board:      {BOARD_WIDTH} x {BOARD_HEIGHT} mm (UNO R3)")
+print(f"Standoffs:  4x OD {STANDOFF_OUTER_DIAMETER}->{STANDOFF_TOP_DIAMETER}mm,"
+      f" height {STANDOFF_HEIGHT}mm, bore {STANDOFF_BORE_DIAMETER}mm")
+print(f"Wall holes: 4x Ø{WALL_HOLE_DIAMETER}mm (outside UNO footprint)")
+print()
+print("Hole positions (X, Y) from plate center:")
+for i, (x, y) in enumerate(UNO_HOLES, 1):
+    print(f"  UNO hole {i}: ({x:+.2f}, {y:+.2f})")
+for i, (x, y) in enumerate(wall_holes, 1):
+    print(f"  Wall hole {i}: ({x:+.2f}, {y:+.2f})")
+print()
+print("To export for 3D printing:")
+print("1. Select the object")
+print("2. File -> Export -> Choose STL or 3MF format")
+print("3. Save with desired filename")
+print("=" * 60)
+
+# Fit view
+import FreeCADGui
+FreeCADGui.SendMsgToActiveView("ViewFit")
+FreeCADGui.activeDocument().activeView().viewTop()
